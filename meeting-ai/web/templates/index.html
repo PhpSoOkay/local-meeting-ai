@@ -1,0 +1,226 @@
+{% extends "base.html" %}
+{% block title %}Meeting AI — Записи{% endblock %}
+
+{% block content %}
+<main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+
+        <!-- Sidebar: controls -->
+        <aside class="lg:col-span-1 space-y-6">
+            <!-- Start recording card -->
+            <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                <div class="bg-gradient-to-r from-brand-600 to-brand-700 px-5 py-4">
+                    <h2 class="text-white font-semibold flex items-center gap-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
+                        Новая запись
+                    </h2>
+                </div>
+                <div class="p-5 space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1.5">Тип встречи</label>
+                        <select id="meetingType" class="w-full rounded-xl border-slate-300 shadow-sm focus:border-brand-500 focus:ring focus:ring-brand-200 text-sm py-2.5 px-3">
+                            {% for key, cfg in meeting_types.items() %}
+                            <option value="{{ key }}">{{ cfg.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    {% if not is_recording %}
+                    <button onclick="startRecording()" class="w-full flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 text-white font-semibold py-2.5 px-4 rounded-xl transition shadow-sm">
+                        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z" clip-rule="evenodd"/></svg>
+                        Начать запись
+                    </button>
+                    {% else %}
+                    <button onclick="stopRecording()" class="w-full flex items-center justify-center gap-2 bg-slate-600 hover:bg-slate-700 text-white font-semibold py-2.5 px-4 rounded-xl transition shadow-sm">
+                        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z" clip-rule="evenodd"/></svg>
+                        Остановить
+                    </button>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Stats card -->
+            <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+                <div class="grid grid-cols-2 gap-4 text-center">
+                    <div>
+                        <div class="text-2xl font-bold text-brand-600">{{ total_meetings }}</div>
+                        <div class="text-xs text-slate-500 mt-0.5">Всего записей</div>
+                    </div>
+                    <div>
+                        <div class="text-2xl font-bold text-emerald-600">{{ processed_meetings }}</div>
+                        <div class="text-xs text-slate-500 mt-0.5">Обработано</div>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Meetings list -->
+        <section class="lg:col-span-3">
+            <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+                    <h2 class="font-semibold text-slate-800 flex items-center gap-2">
+                        <svg class="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>
+                        Записи
+                    </h2>
+                    <a href="/" class="text-slate-400 hover:text-slate-600 transition" title="Обновить">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                    </a>
+                </div>
+                <div class="divide-y divide-slate-100">
+                    {% if meetings %}
+                        {% for meeting in meetings %}
+                        <a href="/meeting/{{ meeting.name }}" class="group block px-5 py-4 hover:bg-slate-50 transition">
+                            <div class="flex items-start gap-4">
+                                <div class="flex-shrink-0 mt-0.5">
+                                    {% if meeting.processed %}
+                                    <span class="flex items-center justify-center w-8 h-8 rounded-full bg-emerald-100 text-emerald-600">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                                    </span>
+                                    {% else %}
+                                    <span class="flex items-center justify-center w-8 h-8 rounded-full bg-amber-100 text-amber-600">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                                    </span>
+                                    {% endif %}
+                                </div>
+                                <div class="flex-1 min-w-0">
+                                    <div class="flex items-center gap-2 mb-1">
+                                        <h3 class="font-semibold text-slate-800 group-hover:text-brand-600 transition truncate">{{ meeting.name }}</h3>
+                                        <span class="flex-shrink-0 text-xs font-medium px-2 py-0.5 rounded-full bg-brand-50 text-brand-700 border border-brand-200">{{ meeting.type }}</span>
+                                    </div>
+                                    <div class="flex items-center gap-3 text-xs text-slate-500">
+                                        <span class="flex items-center gap-1">
+                                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                                            {{ meeting.created }}
+                                        </span>
+                                        <span class="flex items-center gap-1">
+                                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"/></svg>
+                                            {{ meeting.segments }} сегм.
+                                        </span>
+                                        <span class="font-mono">{{ meeting.duration }}</span>
+                                    </div>
+                                </div>
+                                <!-- Кнопка удаления ошибочного прогресса -->
+                                <button id="delete-progress-{{ meeting.name }}" onclick="event.stopPropagation(); deleteProgress('{{ meeting.name }}')" class="hidden flex-shrink-0 text-slate-400 hover:text-red-600 transition" title="Удалить ошибочный процесс">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                                </button>
+                            </div>
+                        </a>
+                        {% endfor %}
+                    {% else %}
+                        <div class="py-20 text-center">
+                            <svg class="mx-auto w-16 h-16 text-slate-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 13h6m-3-3v6m-9 1V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>
+                            <p class="text-slate-500 text-sm">Записей пока нет</p>
+                            <p class="text-slate-400 text-xs mt-1">Выберите тип встречи и начните запись</p>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </section>
+    </div>
+</main>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Проверка статуса обработки при загрузке страницы
+async function checkProcessingStatus() {
+    try {
+        const res = await fetch('/api/status');
+        const data = await res.json();
+        return data;
+    } catch (e) {
+        console.error('Error checking status:', e);
+        return null;
+    }
+}
+
+// Проверка и отображение ошибочных процессов
+async function checkErrorProgress() {
+    try {
+        const res = await fetch('/api/progress');
+        const progresses = await res.json();
+        console.log('Progresses:', progresses);
+        
+        const errorProgresses = progresses.filter(p => p.status === 'error');
+        console.log('Error progresses:', errorProgresses);
+        
+        if (errorProgresses.length > 0) {
+            errorProgresses.forEach(p => {
+                // meeting_name может быть полным путём, берём только имя
+                const nameParts = p.meeting_name.split('/');
+                const meetingName = nameParts[nameParts.length - 1];
+                console.log('Looking for delete-progress-' + meetingName);
+                const deleteBtn = document.getElementById(`delete-progress-${meetingName}`);
+                if (deleteBtn) {
+                    console.log('Found button, showing it');
+                    deleteBtn.classList.remove('hidden');
+                }
+            });
+        }
+    } catch (e) {
+        console.error('Error checking progress:', e);
+    }
+}
+
+async function startRecording() {
+    const type = document.getElementById('meetingType').value;
+    try {
+        const res = await fetch('/api/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ type })
+        });
+        if (res.ok) {
+            location.reload();
+        } else {
+            const err = await res.json();
+            showToast(err.error || 'Ошибка запуска');
+        }
+    } catch (e) {
+        showToast('Ошибка: ' + e.message);
+    }
+}
+
+async function stopRecording() {
+    try {
+        const res = await fetch('/api/stop', { method: 'POST' });
+        if (res.ok) {
+            location.reload();
+        } else {
+            const err = await res.json();
+            showToast(err.error || 'Ошибка остановки');
+        }
+    } catch (e) {
+        showToast('Ошибка: ' + e.message);
+    }
+}
+
+async function deleteProgress(meetingName) {
+    if (!confirm(`Удалить файл прогресса для ${meetingName}?`)) return;
+    
+    try {
+        const res = await fetch(`/api/progress/${meetingName}`, {
+            method: 'DELETE'
+        });
+        
+        if (res.ok) {
+            showToast('✅ Файл прогресса удалён');
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            const err = await res.json().catch(() => ({ error: 'Ошибка сервера' }));
+            showToast('Ошибка: ' + (err.error || 'Не удалось удалить'));
+        }
+    } catch (e) {
+        showToast('Ошибка: ' + e.message);
+    }
+}
+
+// Запускаем после загрузки DOM
+document.addEventListener('DOMContentLoaded', function() {
+    checkProcessingStatus();
+    checkErrorProgress();
+});
+
+// Обновляем прогресс каждые 5 секунд
+setInterval(checkProcessingStatus, 5000);
+</script>
+{% endblock %}

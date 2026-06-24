@@ -1,0 +1,510 @@
+{% extends "base.html" %}
+{% block title %}{{ meeting.name }} — Meeting AI{% endblock %}
+
+{% block content %}
+<main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <!-- Breadcrumb -->
+    <nav class="flex items-center gap-2 text-sm text-slate-500 mb-6">
+        <a href="/" class="hover:text-brand-600 transition flex items-center gap-1">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+            Записи
+        </a>
+        <svg class="w-4 h-4 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+        <span class="text-slate-800 font-medium truncate max-w-xs">{{ meeting.name }}</span>
+    </nav>
+
+    <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+
+        <!-- Left: meeting info + actions -->
+        <aside class="lg:col-span-1 space-y-4">
+            <!-- Meeting info -->
+            <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-3">
+                {% if meeting.title %}
+                <div>
+                    <span class="text-xs font-medium text-slate-400 uppercase tracking-wider">Название</span>
+                    <div class="text-sm font-medium text-slate-800 mt-0.5">{{ meeting.title }}</div>
+                </div>
+                {% endif %}
+                <div>
+                    <span class="text-xs font-medium text-slate-400 uppercase tracking-wider">Дата</span>
+                    <div class="text-sm font-medium text-slate-800 mt-0.5">{{ meeting.created }}</div>
+                </div>
+                <div>
+                    <span class="text-xs font-medium text-slate-400 uppercase tracking-wider">Тип</span>
+                    <div class="mt-0.5">
+                        <span class="text-sm font-medium px-2.5 py-1 rounded-full bg-brand-50 text-brand-700 border border-brand-200">{{ meeting.type }}</span>
+                    </div>
+                </div>
+                <div>
+                    <span class="text-xs font-medium text-slate-400 uppercase tracking-wider">Длительность</span>
+                    <div class="text-sm font-mono text-slate-800 mt-0.5">{{ meeting.duration }}</div>
+                </div>
+                <div>
+                    <span class="text-xs font-medium text-slate-400 uppercase tracking-wider">Сегменты</span>
+                    <div class="text-sm text-slate-800 mt-0.5">{{ meeting.segments }} файлов</div>
+                </div>
+            </div>
+
+            <!-- Actions -->
+            <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-2">
+                <a href="/api/transcript/{{ meeting.name }}" 
+                   class="block w-full text-center bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium py-2 px-4 rounded-xl transition text-sm"
+                   id="btnDownloadTranscript">
+                    <span class="flex items-center justify-center gap-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                        Скачать транскрипт
+                    </span>
+                </a>
+                <a href="/api/summary/{{ meeting.name }}" 
+                   class="block w-full text-center bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium py-2 px-4 rounded-xl transition text-sm"
+                   id="btnDownloadSummary">
+                    <span class="flex items-center justify-center gap-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                        Скачать саммари
+                    </span>
+                </a>
+                <hr class="border-slate-200">
+                <button onclick="processStep('all')" class="w-full flex items-center justify-center gap-2 bg-slate-700 hover:bg-slate-800 text-white font-medium py-2 px-4 rounded-xl transition text-sm" id="btnAll" title="">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                    Обработать всё
+                </button>
+            </div>
+
+            <!-- Progress -->
+            <div id="processingProgress" class="hidden bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+                <div class="flex items-center justify-between mb-2">
+                    <div class="flex items-center gap-3">
+                        <div class="spinner text-brand-600" style="width: 1rem; height: 1rem; border: 2px solid transparent; border-top-color: currentColor; border-radius: 50%; animation: spin-slow 1s linear infinite;"></div>
+                        <span id="progressText" class="text-sm font-medium text-slate-700">Обработка…</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span id="progressPercent" class="text-sm font-mono text-brand-600">0%</span>
+                        <button id="cancelProgressBtn" onclick="deleteProgress()" class="hidden text-slate-400 hover:text-red-600 transition" title="Удалить ошибочный процесс">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                        </button>
+                    </div>
+                </div>
+                <div class="w-full bg-slate-100 rounded-full h-2">
+                    <div id="progressBar" class="bg-brand-600 h-2 rounded-full transition-all duration-500" style="width: 0%"></div>
+                </div>
+                <div id="progressDetail" class="text-xs text-slate-500 mt-2 font-mono break-all"></div>
+            </div>
+
+            <!-- Refresh button -->
+            <a href="/meeting/{{ meeting.name }}" class="block w-full text-center bg-white hover:bg-slate-50 text-slate-600 font-medium py-2 px-4 rounded-xl border border-slate-200 transition text-sm">
+                <span class="flex items-center justify-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                    Обновить страницу
+                </span>
+            </a>
+        </aside>
+
+        <!-- Right: content tabs -->
+        <section class="lg:col-span-3 space-y-4">
+            <!-- Tabs -->
+            <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                <div class="border-b border-slate-200 flex">
+                    <button onclick="switchTab('segments')" id="tab-segments" class="tab-btn flex-1 px-4 py-3 text-sm font-medium text-brand-600 border-b-2 border-brand-600 bg-brand-50 transition">
+                        <span class="flex items-center justify-center gap-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"/></svg>
+                            Сегменты
+                        </span>
+                    </button>
+                    <button onclick="switchTab('transcript')" id="tab-transcript" class="tab-btn flex-1 px-4 py-3 text-sm font-medium text-slate-500 hover:text-slate-700 transition">
+                        <span class="flex items-center justify-center gap-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/></svg>
+                            Транскрипт
+                        </span>
+                    </button>
+                    <button onclick="switchTab('summary')" id="tab-summary" class="tab-btn flex-1 px-4 py-3 text-sm font-medium text-slate-500 hover:text-slate-700 transition">
+                        <span class="flex items-center justify-center gap-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+                            Саммари
+                        </span>
+                    </button>
+                </div>
+
+                <div class="p-5 min-h-[400px]">
+                    <!-- Segments tab -->
+                    <div id="content-segments" class="tab-content">
+                        <div class="space-y-3">
+                            {% for seg in segments %}
+                            <div class="flex items-center gap-3 p-3 rounded-xl bg-slate-50 border border-slate-100">
+                                <div class="flex-shrink-0 w-8 h-8 rounded-lg bg-brand-100 text-brand-600 flex items-center justify-center">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"/></svg>
+                                </div>
+                                <div class="flex-1 min-w-0">
+                                    <div class="text-sm font-medium text-slate-700 truncate">{{ seg.name }}</div>
+                                    <div class="text-xs text-slate-500 font-mono">{{ seg.duration }}</div>
+                                </div>
+                                <audio controls class="w-full sm:w-48 h-8" style="accent-color: #4f46e5;">
+                                    <source src="/api/audio/{{ meeting.name }}/{{ seg.name }}" type="audio/wav">
+                                </audio>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        {% if not segments %}
+                        <div class="py-16 text-center">
+                            <svg class="mx-auto w-12 h-12 text-slate-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"/></svg>
+                            <p class="text-slate-500 text-sm">Аудио сегменты появятся после записи</p>
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    <!-- Transcript tab -->
+                    <div id="content-transcript" class="tab-content hidden">
+                        {% if transcript %}
+                        <div class="prose prose-sm max-w-none">
+                            {% for line in transcript_lines %}
+                            {% if line.startswith('[') and ':' in line %}
+                            <div class="transcript-line py-1.5">
+                                <span class="text-brand-600 font-semibold">{{ line.replace(':', ':') }}</span>
+                            </div>
+                            {% else %}
+                            <p class="text-slate-700 leading-relaxed ml-2">{{ line }}</p>
+                            {% endif %}
+                            {% endfor %}
+                        </div>
+                        {% else %}
+                        <div class="py-16 text-center">
+                            <svg class="mx-auto w-12 h-12 text-slate-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/></svg>
+                            <p class="text-slate-500 text-sm">Транскрипт появится после обработки</p>
+                            <button onclick="processStep('transcript')" class="mt-3 inline-flex items-center gap-1.5 text-brand-600 hover:text-brand-700 text-sm font-medium">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h8m-8 6h16"/></svg>
+                                Транскрибировать
+                            </button>
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    <!-- Summary tab -->
+                    <div id="content-summary" class="tab-content hidden">
+                        {% if summary %}
+                        <div class="space-y-6">
+                            {% if summary.title %}
+                            <div>
+                                <h4 class="text-sm font-bold text-slate-800 uppercase tracking-wider mb-3 pb-2 border-b border-slate-200">Название</h4>
+                                <p class="text-slate-700">{{ summary.title }}</p>
+                            </div>
+                            {% endif %}
+                            {% if summary.summary %}
+                            <div>
+                                <h4 class="text-sm font-bold text-slate-800 uppercase tracking-wider mb-3 pb-2 border-b border-slate-200">Краткое содержание</h4>
+                                <p class="text-slate-700 leading-relaxed">{{ summary.summary }}</p>
+                            </div>
+                            {% endif %}
+                            {% if summary.action_items and summary.action_items|length > 0 %}
+                            <div>
+                                <h4 class="text-sm font-bold text-slate-800 uppercase tracking-wider mb-3 pb-2 border-b border-slate-200">Задачи</h4>
+                                <ul class="space-y-1.5">
+                                    {% for item in summary.action_items %}
+                                    <li class="flex items-start gap-2 text-slate-700">
+                                        <span class="mt-1.5 w-1.5 h-1.5 rounded-full bg-brand-400 flex-shrink-0"></span>
+                                        <span>{{ item }}</span>
+                                    </li>
+                                    {% endfor %}
+                                </ul>
+                            </div>
+                            {% endif %}
+                            {% if summary.decisions and summary.decisions|length > 0 %}
+                            <div>
+                                <h4 class="text-sm font-bold text-slate-800 uppercase tracking-wider mb-3 pb-2 border-b border-slate-200">Решения</h4>
+                                <ul class="space-y-1.5">
+                                    {% for item in summary.decisions %}
+                                    <li class="flex items-start gap-2 text-slate-700">
+                                        <span class="mt-1.5 w-1.5 h-1.5 rounded-full bg-brand-400 flex-shrink-0"></span>
+                                        <span>{{ item }}</span>
+                                    </li>
+                                    {% endfor %}
+                                </ul>
+                            </div>
+                            {% endif %}
+                            {% if summary.career_insights and summary.career_insights|length > 0 %}
+                            <div>
+                                <h4 class="text-sm font-bold text-slate-800 uppercase tracking-wider mb-3 pb-2 border-b border-slate-200">Карьерные инсайты</h4>
+                                <ul class="space-y-1.5">
+                                    {% for item in summary.career_insights %}
+                                    <li class="flex items-start gap-2 text-slate-700">
+                                        <span class="mt-1.5 w-1.5 h-1.5 rounded-full bg-brand-400 flex-shrink-0"></span>
+                                        <span>{{ item }}</span>
+                                    </li>
+                                    {% endfor %}
+                                </ul>
+                            </div>
+                            {% endif %}
+                            {% if summary.yesterday and summary.yesterday|length > 0 %}
+                            <div>
+                                <h4 class="text-sm font-bold text-slate-800 uppercase tracking-wider mb-3 pb-2 border-b border-slate-200">Что сделали вчера</h4>
+                                {% for item in summary.yesterday %}
+                                <div class="mb-3 last:mb-0">
+                                    <div class="font-semibold text-slate-800 text-sm">{{ item.person }}</div>
+                                    <ul class="mt-1 space-y-1 ml-3">
+                                        {% for task in item.tasks %}
+                                        <li class="flex items-start gap-1.5 text-slate-700 text-sm">
+                                            <span class="mt-1.5 w-1 h-1 rounded-full bg-slate-400 flex-shrink-0"></span>
+                                            {{ task }}
+                                        </li>
+                                        {% endfor %}
+                                    </ul>
+                                </div>
+                                {% endfor %}
+                            </div>
+                            {% endif %}
+                            {% if summary.today and summary.today|length > 0 %}
+                            <div>
+                                <h4 class="text-sm font-bold text-slate-800 uppercase tracking-wider mb-3 pb-2 border-b border-slate-200">Планы на сегодня</h4>
+                                {% for item in summary.today %}
+                                <div class="mb-3 last:mb-0">
+                                    <div class="font-semibold text-slate-800 text-sm">{{ item.person }}</div>
+                                    <ul class="mt-1 space-y-1 ml-3">
+                                        {% for task in item.tasks %}
+                                        <li class="flex items-start gap-1.5 text-slate-700 text-sm">
+                                            <span class="mt-1.5 w-1 h-1 rounded-full bg-slate-400 flex-shrink-0"></span>
+                                            {{ task }}
+                                        </li>
+                                        {% endfor %}
+                                    </ul>
+                                    {% if item.estimated_time %}
+                                    <div class="text-xs text-slate-500 mt-0.5 ml-3">⏱ {{ item.estimated_time }}</div>
+                                    {% endif %}
+                                </div>
+                                {% endfor %}
+                            </div>
+                            {% endif %}
+                            {% if summary.blockers and summary.blockers|length > 0 %}
+                            <div>
+                                <h4 class="text-sm font-bold text-slate-800 uppercase tracking-wider mb-3 pb-2 border-b border-slate-200">Блокеры</h4>
+                                {% for item in summary.blockers %}
+                                <div class="mb-2 last:mb-0 text-sm">
+                                    <span class="font-semibold text-slate-800">{{ item.person }}:</span> {{ item.blocker }}
+                                    {% if item.needs_help_from %}
+                                    <br><span class="text-slate-500 text-xs">Нужна помощь от: {{ item.needs_help_from }}</span>
+                                    {% endif %}
+                                </div>
+                                {% endfor %}
+                            </div>
+                            {% endif %}
+                            {% if summary.sentiment %}
+                            <div>
+                                <h4 class="text-sm font-bold text-slate-800 uppercase tracking-wider mb-3 pb-2 border-b border-slate-200">Тон</h4>
+                                <span class="text-sm font-medium px-2.5 py-1 rounded-full bg-brand-50 text-brand-700 border border-brand-200">{{ summary.sentiment }}</span>
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% else %}
+                        <div class="py-16 text-center">
+                            <svg class="mx-auto w-12 h-12 text-slate-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+                            <p class="text-slate-500 text-sm">Саммари появится после обработки</p>
+                            <button onclick="processStep('summary')" class="mt-3 inline-flex items-center gap-1.5 text-brand-600 hover:text-brand-700 text-sm font-medium">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                                Суммаризировать
+                            </button>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+</main>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const meetingName = "{{ meeting.name }}";
+
+// Проверка статуса обработки при загрузке страницы
+async function checkProcessingStatus() {
+    try {
+        const res = await fetch('/api/status');
+        const data = await res.json();
+        updateProcessButton(data);
+        return data;
+    } catch (e) {
+        console.error('Error checking status:', e);
+        return null;
+    }
+}
+
+function updateProcessButton(statusData) {
+    const btn = document.getElementById('btnAll');
+    if (!btn) return;
+
+    if (statusData.processing && statusData.processing.processing) {
+        const current = statusData.processing.current;
+        if (current && current.status === 'processing') {
+            btn.classList.remove('bg-slate-700', 'hover:bg-slate-800');
+            btn.classList.add('bg-red-600', 'hover:bg-red-700');
+            btn.title = 'Идёт обработка записи, начать новую пока невозможно.';
+            btn.disabled = true;
+            btn.style.cursor = 'not-allowed';
+            btn.style.opacity = '0.8';
+        } else {
+            btn.classList.remove('bg-red-600', 'hover:bg-red-700');
+            btn.classList.add('bg-slate-700', 'hover:bg-slate-800');
+            btn.title = '';
+            btn.disabled = false;
+            btn.style.cursor = '';
+            btn.style.opacity = '';
+        }
+    } else {
+        btn.classList.remove('bg-red-600', 'hover:bg-red-700');
+        btn.classList.add('bg-slate-700', 'hover:bg-slate-800');
+        btn.title = '';
+        btn.disabled = false;
+        btn.style.cursor = '';
+        btn.style.opacity = '';
+    }
+}
+
+function switchTab(tab) {
+    document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+    document.querySelectorAll('.tab-btn').forEach(el => {
+        el.classList.remove('text-brand-600', 'border-b-2', 'border-brand-600', 'bg-brand-50');
+        el.classList.add('text-slate-500');
+    });
+    document.getElementById('content-' + tab).classList.remove('hidden');
+    const btn = document.getElementById('tab-' + tab);
+    btn.classList.add('text-brand-600', 'border-b-2', 'border-brand-600', 'bg-brand-50');
+    btn.classList.remove('text-slate-500');
+}
+
+async function processStep(step) {
+    const btnMap = { all: 'btnAll', transcript: 'btnTranscript', summary: 'btnSummary' };
+    const btn = document.getElementById(btnMap[step]) || document.getElementById('btnAll');
+    const progress = document.getElementById('processingProgress');
+    const progressText = document.getElementById('progressText');
+    const progressBar = document.getElementById('progressBar');
+    const progressPercent = document.getElementById('progressPercent');
+    const progressDetail = document.getElementById('progressDetail');
+    const cancelBtn = document.getElementById('cancelProgressBtn');
+
+    // Проверяем, не запущен ли другой процесс
+    try {
+        const statusRes = await fetch('/api/status');
+        const statusData = await statusRes.json();
+        if (statusData.processing && statusData.processing.processing) {
+            const current = statusData.processing.current;
+            if (current && current.status === 'processing' && current.meeting_name !== meetingName) {
+                showToast('⚠️ Невозможно начать — уже идёт обработка: ' + (current.detail || current.step));
+                return;
+            }
+        }
+    } catch (e) {
+        console.error('Error checking status:', e);
+    }
+
+    if (btn) {
+        btn.disabled = true;
+        btn.classList.add('opacity-60', 'cursor-not-allowed');
+    }
+    if (progress) progress.classList.remove('hidden');
+    if (progressText) progressText.textContent = 'Запуск...';
+    if (progressBar) progressBar.style.width = '0%';
+    if (progressPercent) progressPercent.textContent = '0%';
+    if (progressDetail) progressDetail.textContent = '';
+    if (cancelBtn) cancelBtn.classList.add('hidden');
+
+    try {
+        const res = await fetch(`/api/process/${step}/${meetingName}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({ error: 'Ошибка сервера' }));
+            throw new Error(err.error || 'Ошибка сервера');
+        }
+
+        // Polling для проверки прогресса (раз в 3 секунды)
+        const pollInterval = setInterval(async () => {
+            try {
+                const statusRes = await fetch(`/api/progress/${meetingName}`);
+                const data = await statusRes.json();
+
+                if (progressBar) progressBar.style.width = data.progress + '%';
+                if (progressPercent) progressPercent.textContent = Math.round(data.progress) + '%';
+                if (progressDetail && data.detail) progressDetail.textContent = data.detail;
+                if (progressText) progressText.textContent = data.step || 'Обработка…';
+
+                if (data.status === 'done') {
+                    if (progressBar) progressBar.style.width = '100%';
+                    if (progressPercent) progressPercent.textContent = '100%';
+                    if (progressDetail) progressDetail.textContent = '✓ Готово!';
+                    if (progressText) {
+                        progressText.textContent = '✓ Готово!';
+                        progressText.classList.remove('text-slate-700');
+                        progressText.classList.add('text-green-600');
+                    }
+                    setTimeout(() => location.reload(), 1500);
+                    clearInterval(pollInterval);
+                    if (btn) {
+                        btn.disabled = false;
+                        btn.classList.remove('opacity-60', 'cursor-not-allowed');
+                    }
+                } else if (data.status === 'error') {
+                    if (progressText) {
+                        progressText.textContent = '✗ Ошибка';
+                        progressText.classList.remove('text-slate-700');
+                        progressText.classList.add('text-red-600');
+                    }
+                    if (progressBar) {
+                        progressBar.style.width = '100%';
+                        progressBar.style.backgroundColor = '#ef4444';
+                    }
+                    if (progressDetail) {
+                        progressDetail.textContent = data.detail || 'Произошла ошибка при обработке';
+                    }
+                    // Показываем крестик для удаления ошибочного процесса
+                    if (cancelBtn) cancelBtn.classList.remove('hidden');
+                    clearInterval(pollInterval);
+                    if (btn) {
+                        btn.disabled = false;
+                        btn.classList.remove('opacity-60', 'cursor-not-allowed');
+                    }
+                }
+            } catch (e) {
+                console.error('Poll error:', e);
+            }
+        }, 3000);
+
+    } catch (e) {
+        showToast('Ошибка: ' + e.message);
+        if (progress) progress.classList.add('hidden');
+        if (btn) {
+            btn.disabled = false;
+            btn.classList.remove('opacity-60', 'cursor-not-allowed');
+        }
+    }
+}
+
+async function deleteProgress() {
+    if (!confirm('Удалить файл прогресса для этой встречи?')) return;
+    
+    try {
+        const res = await fetch(`/api/progress/${meetingName}`, {
+            method: 'DELETE'
+        });
+        
+        if (res.ok) {
+            showToast('✅ Файл прогресса удалён');
+            // Скрываем блок прогресса
+            const progress = document.getElementById('processingProgress');
+            if (progress) progress.classList.add('hidden');
+            // Перезагружаем страницу через небольшую паузу
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            const err = await res.json().catch(() => ({ error: 'Ошибка сервера' }));
+            showToast('Ошибка: ' + (err.error || 'Не удалось удалить'));
+        }
+    } catch (e) {
+        showToast('Ошибка: ' + e.message);
+    }
+}
+
+// Проверяем статус при загрузке страницы
+checkProcessingStatus();
+// Обновляем состояние кнопки каждые 5 секунд
+setInterval(checkProcessingStatus, 5000);
+</script>
+{% endblock %}

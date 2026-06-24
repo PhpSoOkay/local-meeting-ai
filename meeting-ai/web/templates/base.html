@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Meeting AI{% endblock %}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @keyframes pulse-dot {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+        .recording-dot {
+            animation: pulse-dot 1.5s infinite;
+        }
+        .transcript-line {
+            border-left: 3px solid #c7d2fe;
+            padding-left: 0.75rem;
+            margin-left: 0.25rem;
+        }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+        @keyframes spin-slow {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen font-sans text-slate-800">
+
+    <!-- Header -->
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-sm">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <a href="/" class="flex items-center gap-2 text-brand-700 hover:text-brand-600 transition relative" id="headerLink">
+                <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 01-3 3z"/>
+                </svg>
+                <span class="text-xl font-bold tracking-tight">Meeting AI</span>
+                <!-- Индикатор обработки -->
+                <div id="headerProcessingIndicator" class="hidden absolute -bottom-1 left-1/2 -translate-x-1/2">
+                    <div class="w-16 h-1 bg-slate-200 rounded-full overflow-hidden">
+                        <div id="headerProgressBar" class="h-full bg-brand-600 rounded-full transition-all duration-500" style="width: 0%"></div>
+                    </div>
+                </div>
+            </a>
+            <div class="flex items-center gap-3">
+                {% if is_recording %}
+                <div class="flex items-center gap-2 px-3 py-1.5 bg-red-50 text-red-700 rounded-full text-sm font-medium border border-red-200">
+                    <span class="recording-dot w-2 h-2 rounded-full bg-red-500 inline-block"></span>
+                    <span>Идёт запись…</span>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </header>
+
+    <!-- Progress bar overlay (показывается при обработке) -->
+    <div id="processingBarOverlay" class="hidden fixed top-16 left-0 right-0 z-30 bg-brand-50 border-b border-brand-200">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2">
+            <div class="flex items-center gap-3">
+                <div class="flex items-center gap-2 flex-shrink-0">
+                    <div class="spinner text-brand-600" style="width: 0.75rem; height: 0.75rem; border: 2px solid transparent; border-top-color: currentColor; border-radius: 50%; animation: spin-slow 1s linear infinite;"></div>
+                    <span id="processingBarText" class="text-sm font-medium text-brand-700">Обработка…</span>
+                </div>
+                <div class="flex-1 w-full max-w-md">
+                    <div class="w-full bg-brand-200 rounded-full h-1.5">
+                        <div id="processingBarFill" class="bg-brand-600 h-1.5 rounded-full transition-all duration-500" style="width: 0%"></div>
+                    </div>
+                </div>
+                <span id="processingBarPercent" class="text-xs font-mono text-brand-600 flex-shrink-0">0%</span>
+            </div>
+        </div>
+    </div>
+
+    {% block content %}{% endblock %}
+
+    <!-- Toast -->
+    <div id="toast" class="fixed bottom-6 right-6 z-50 hidden">
+        <div class="bg-slate-800 text-white px-5 py-3 rounded-xl shadow-lg text-sm font-medium flex items-center gap-2">
+            <span id="toastText"></span>
+        </div>
+    </div>
+
+    <script>
+    function showToast(text, duration = 3000) {
+        const toast = document.getElementById('toast');
+        document.getElementById('toastText').textContent = text;
+        toast.classList.remove('hidden');
+        setTimeout(() => toast.classList.add('hidden'), duration);
+    }
+
+    // Обновление прогресс-бара в хедере при обработке
+    async function updateProcessingBar() {
+        try {
+            const res = await fetch('/api/status');
+            const data = await res.json();
+
+            const indicator = document.getElementById('headerProcessingIndicator');
+            const progressBar = document.getElementById('headerProgressBar');
+            const overlay = document.getElementById('processingBarOverlay');
+            const barFill = document.getElementById('processingBarFill');
+            const barText = document.getElementById('processingBarText');
+            const barPercent = document.getElementById('processingBarPercent');
+            const headerLink = document.getElementById('headerLink');
+
+            if (data.processing && data.processing.processing) {
+                const current = data.processing.current;
+                if (current && current.status === 'processing') {
+                    // Показываем индикатор и overlay
+                    indicator.classList.remove('hidden');
+                    overlay.classList.remove('hidden');
+
+                    // Обновляем прогресс
+                    const progress = Math.round(current.progress || 0);
+                    progressBar.style.width = progress + '%';
+                    barFill.style.width = progress + '%';
+                    barPercent.textContent = progress + '%';
+                    barText.textContent = current.step || 'Обработка…';
+
+                    // Кликабельная ссылка на страницу встречи
+                    const meetingName = current.meeting_name || '';
+                    if (meetingName) {
+                        headerLink.href = '/meeting/' + meetingName;
+                    }
+                } else if (current && current.status === 'done') {
+                    // Завершено
+                    indicator.classList.remove('hidden');
+                    progressBar.style.width = '100%';
+                    overlay.classList.remove('hidden');
+                    barFill.style.width = '100%';
+                    barPercent.textContent = '100%';
+                    barText.textContent = '✓ Готово!';
+
+                    const meetingName = current.meeting_name || '';
+                    if (meetingName) {
+                        headerLink.href = '/meeting/' + meetingName;
+                        headerLink.style.cursor = 'pointer';
+                    }
+
+                    // Скрываем через 3 секунды
+                    setTimeout(() => {
+                        indicator.classList.add('hidden');
+                        overlay.classList.add('hidden');
+                        headerLink.href = '/';
+                    }, 3000);
+                } else if (current && current.status === 'error') {
+                    indicator.classList.remove('hidden');
+                    overlay.classList.remove('hidden');
+                    barFill.style.width = '100%';
+                    barFill.classList.remove('bg-brand-600');
+                    barFill.classList.add('bg-red-500');
+                    barPercent.textContent = '✗';
+                    barText.textContent = 'Ошибка: ' + (current.detail || 'Неизвестная ошибка');
+
+                    const meetingName = current.meeting_name || '';
+                    if (meetingName) {
+                        headerLink.href = '/meeting/' + meetingName;
+                    }
+                }
+            } else {
+                // Нет обработки — скрываем
+                indicator.classList.add('hidden');
+                overlay.classList.add('hidden');
+                progressBar.style.width = '0%';
+                barFill.style.width = '0%';
+                barFill.classList.remove('bg-red-500');
+                barFill.classList.add('bg-brand-600');
+                headerLink.href = '/';
+            }
+        } catch (e) {
+            console.error('Error checking processing status:', e);
+        }
+    }
+
+    // Проверяем статус при загрузке и каждые 5 секунд
+    updateProcessingBar();
+    setInterval(updateProcessingBar, 5000);
+    </script>
+
+    {% block scripts %}{% endblock %}
+</body>
+</html>
