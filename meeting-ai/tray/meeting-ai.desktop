@@ -1,0 +1,14 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Meeting AI
+GenericName=AI Meeting Assistant
+Comment=Запись и анализ рабочих встреч с AI
+Exec=/home/carrier/Yandex.Disk/carrier/meeting-ai/.venv/bin/python /home/carrier/Yandex.Disk/carrier/meeting-ai/tray/app.py
+Icon=/home/carrier/Yandex.Disk/carrier/meeting-ai/assets/icons/tray.png
+Path=/home/carrier/Yandex.Disk/carrier/meeting-ai
+Terminal=false
+StartupNotify=true
+Categories=Office;AudioVideo;Utility;
+Keywords=meeting;recording;transcription;ai;whisper;
+MimeType=
