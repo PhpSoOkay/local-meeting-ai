@@ -19,12 +19,17 @@
         <aside class="lg:col-span-1 space-y-4">
             <!-- Meeting info -->
             <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-3">
-                {% if meeting.title %}
                 <div>
                     <span class="text-xs font-medium text-slate-400 uppercase tracking-wider">Название</span>
-                    <div class="text-sm font-medium text-slate-800 mt-0.5">{{ meeting.title }}</div>
+                    <div class="flex items-center gap-1.5 mt-0.5">
+                        <input type="text" id="meetingTitleInput" value="{{ meeting.title }}" 
+                               class="text-sm font-medium text-slate-800 bg-transparent border-b border-dashed border-slate-300 focus:border-brand-500 focus:outline-none flex-1 truncate"
+                               placeholder="Без названия">
+                        <button onclick="updateTitle()" class="text-slate-400 hover:text-brand-600 transition p-0.5" title="Сохранить">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                        </button>
+                    </div>
                 </div>
-                {% endif %}
                 <div>
                     <span class="text-xs font-medium text-slate-400 uppercase tracking-wider">Дата</span>
                     <div class="text-sm font-medium text-slate-800 mt-0.5">{{ meeting.created }}</div>
@@ -67,6 +72,14 @@
                 <button onclick="processStep('all')" class="w-full flex items-center justify-center gap-2 bg-slate-700 hover:bg-slate-800 text-white font-medium py-2 px-4 rounded-xl transition text-sm" id="btnAll" title="">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
                     Обработать всё
+                </button>
+                <button onclick="processStep('summary')" class="w-full flex items-center justify-center gap-2 bg-white hover:bg-slate-50 text-slate-700 font-medium py-2 px-4 rounded-xl border border-slate-200 transition text-sm" id="btnSummary" title="Запустить суммаризацию по существующему транскрипту">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                    Суммаризировать
+                </button>
+                <button onclick="processStep('transcript')" class="w-full flex items-center justify-center gap-2 bg-white hover:bg-slate-50 text-slate-700 font-medium py-2 px-4 rounded-xl border border-slate-200 transition text-sm" id="btnTranscript" title="Транскрибировать заново">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/></svg>
+                    Транскрибировать
                 </button>
             </div>
 
@@ -165,6 +178,14 @@
                             {% endif %}
                             {% endfor %}
                         </div>
+                        
+                        <!-- Кнопка транскрибировать заново -->
+                        <div class="mt-6 pt-4 border-t border-slate-200">
+                            <button onclick="processStep('transcript')" class="w-full flex items-center justify-center gap-2 bg-white hover:bg-slate-50 text-slate-700 font-medium py-2 px-4 rounded-xl border border-slate-200 transition text-sm">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                                Транскрибировать заново
+                            </button>
+                        </div>
                         {% else %}
                         <div class="py-16 text-center">
                             <svg class="mx-auto w-12 h-12 text-slate-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/></svg>
@@ -180,6 +201,22 @@
                     <!-- Summary tab -->
                     <div id="content-summary" class="tab-content hidden">
                         {% if summary %}
+                        <!-- Показываем ошибку если суммаризация не удалась -->
+                        {% if 'без_суммаризации' in (summary.title or '') %}
+                        <div class="mb-4 p-4 bg-red-50 border border-red-200 rounded-xl">
+                            <div class="flex items-start gap-3">
+                                <svg class="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                                <div>
+                                    <div class="text-sm font-semibold text-red-800">Суммаризация не удалась</div>
+                                    <div class="text-sm text-red-700 mt-1">{{ summary.summary }}</div>
+                                    <button onclick="processStep('summary')" class="mt-2 text-sm text-brand-600 hover:text-brand-700 font-medium">
+                                        Попробовать снова →
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        {% endif %}
+                        
                         <div class="space-y-6">
                             {% if summary.title %}
                             <div>
@@ -291,6 +328,14 @@
                             </div>
                             {% endif %}
                         </div>
+                        
+                        <!-- Кнопка пересуммаризировать -->
+                        <div class="mt-6 pt-4 border-t border-slate-200">
+                            <button onclick="processStep('summary')" class="w-full flex items-center justify-center gap-2 bg-white hover:bg-slate-50 text-slate-700 font-medium py-2 px-4 rounded-xl border border-slate-200 transition text-sm">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                                Пересуммаризировать
+                            </button>
+                        </div>
                         {% else %}
                         <div class="py-16 text-center">
                             <svg class="mx-auto w-12 h-12 text-slate-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
@@ -312,6 +357,37 @@
 {% block scripts %}
 <script>
 const meetingName = "{{ meeting.name }}";
+
+// Обновление названия встречи
+async function updateTitle() {
+    const input = document.getElementById('meetingTitleInput');
+    const newTitle = input.value.trim();
+    
+    if (!newTitle) {
+        showToast('Название не может быть пустым');
+        return;
+    }
+    
+    try {
+        const res = await fetch(`/api/meeting/${encodeURIComponent(meetingName)}/title`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title: newTitle })
+        });
+        
+        if (res.ok) {
+            showToast('✅ Название обновлено');
+            // Обновляем breadcrumb
+            const breadcrumb = document.querySelector('nav span.text-slate-800');
+            if (breadcrumb) breadcrumb.textContent = newTitle;
+        } else {
+            const err = await res.json().catch(() => ({ error: 'Ошибка сервера' }));
+            showToast('❌ ' + (err.error || 'Не удалось обновить'));
+        }
+    } catch (e) {
+        showToast('❌ Ошибка: ' + e.message);
+    }
+}
 
 // Проверка статуса обработки при загрузке страницы
 async function checkProcessingStatus() {
@@ -406,7 +482,9 @@ async function processStep(step) {
     if (cancelBtn) cancelBtn.classList.add('hidden');
 
     try {
-        const res = await fetch(`/api/process/${step}/${meetingName}`, {
+        // Для summary используем summary-only
+        const endpoint = step === 'summary' ? 'summary-only' : step;
+        const res = await fetch(`/api/process/${endpoint}/${meetingName}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' }
         });

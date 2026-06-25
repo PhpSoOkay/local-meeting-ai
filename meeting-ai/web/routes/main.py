@@ -1,9 +1,10 @@
-from flask import render_template, jsonify
+from flask import render_template, jsonify, request
 from pathlib import Path
 import shutil
+import json
 from datetime import datetime, date as date_t
 from . import main_bp
-from ..helpers import get_recording_status, list_meetings, load_meeting_types, find_meeting_dir, format_duration, TRANSCRIPTS_DIR, SUMMARIES_DIR
+from ..helpers import get_recording_status, list_meetings, load_meeting_types, find_meeting_dir, format_duration, TRANSCRIPTS_DIR, SUMMARIES_DIR, BASE_DIR
 
 
 @main_bp.route('/')
@@ -154,3 +155,36 @@ def delete_meeting(meeting_name):
         shutil.rmtree(summary_dir)
     
     return jsonify({'status': 'ok', 'deleted': meeting_name}), 200
+
+
+@main_bp.route('/api/meeting/<meeting_name>/title', methods=['PUT'])
+def update_meeting_title(meeting_name):
+    """Обновить название встречи в meeting_metadata.json"""
+    meeting_dir = find_meeting_dir(meeting_name)
+    if not meeting_dir:
+        return jsonify({'error': 'Встреча не найдена'}), 404
+    
+    data = request.json or {}
+    new_title = data.get('title', '').strip()
+    
+    if not new_title:
+        return jsonify({'error': 'Название не может быть пустым'}), 400
+    
+    # Читаем текущие метаданные
+    metadata_file = meeting_dir / "meeting_metadata.json"
+    metadata = {}
+    if metadata_file.exists():
+        try:
+            metadata = json.loads(metadata_file.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    
+    # Обновляем title
+    metadata['title'] = new_title
+    
+    # Сохраняем
+    with open(metadata_file, 'w', encoding='utf-8') as f:
+        json.dump(metadata, f, ensure_ascii=False, indent=2)
+    
+    return jsonify({'status': 'ok', 'title': new_title}), 200
+

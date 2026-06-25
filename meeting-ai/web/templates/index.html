@@ -90,7 +90,9 @@
                                 </div>
                                 <div class="flex-1 min-w-0">
                                     <div class="flex items-center gap-2 mb-1">
-                                        <a href="/meeting/{{ meeting.name }}" class="font-semibold text-slate-800 group-hover:text-brand-600 transition truncate">{{ meeting.name }}</a>
+                                        <a href="/meeting/{{ meeting.name }}" class="font-semibold text-slate-800 group-hover:text-brand-600 transition truncate block">
+                                            {{ meeting.title or meeting.name }}
+                                        </a>
                                     </div>
                                     <div class="flex items-center gap-2 mb-2">
                                         <span class="flex-shrink-0 text-xs font-medium px-2 py-0.5 rounded-full bg-brand-50 text-brand-700 border border-brand-200">{{ meeting.type }}</span>

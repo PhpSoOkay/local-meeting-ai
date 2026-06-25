@@ -141,3 +141,87 @@ def api_delete_progress(meeting_name):
         return jsonify({"status": "deleted", "meeting": meeting_name})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@processing_bp.route('/process/summary-only/<meeting_name>', methods=['POST'])
+def api_process_summary_only(meeting_name):
+    """API: суммаризировать заново по существующему транскрипту"""
+    import threading
+    from ..helpers import get_processing_status, find_meeting_dir, BASE_DIR
+    from pathlib import Path
+    import json
+    import os
+    import sys
+    
+    # Проверяем, не идёт ли обработка другой встречи
+    processing = get_processing_status()
+    if processing.get("processing") and processing.get("current", {}).get("status") == "processing":
+        return jsonify({"error": "Нельзя начать обработку — идёт обработка другой встречи", "processing": processing}), 409
+    
+    meeting_dir = find_meeting_dir(meeting_name)
+    if not meeting_dir:
+        return jsonify({"error": "Встреча не найдена"}), 404
+    
+    # Читаем тип встречи
+    type_file = meeting_dir / ".meeting_type"
+    meeting_type = "default"
+    if type_file.exists():
+        meeting_type = type_file.read_text().strip()
+    
+    def run_summary_only():
+        sys.path.insert(0, str(BASE_DIR / "scripts"))
+        from process_meeting import summarize_with_kodacode, save_results
+        from progress import save_progress, clear_progress
+        
+        meeting_id = meeting_name
+        save_progress(meeting_name, "processing", "Суммаризация транскрипта...", 70)
+        
+        try:
+            # Ищем транскрипт
+            transcript_file = None
+            metadata_file = meeting_dir / "meeting_metadata.json"
+            if metadata_file.exists():
+                try:
+                    metadata = json.loads(metadata_file.read_text(encoding="utf-8"))
+                    if "transcript_dir" in metadata:
+                        transcript_file = Path(metadata["transcript_dir"]) / "transcript.txt"
+                except Exception:
+                    pass
+            
+            if not transcript_file or not transcript_file.exists():
+                # Fallback
+                transcript_file = BASE_DIR / "transcripts" / meeting_name / "transcript.txt"
+            
+            if not transcript_file.exists():
+                save_progress(meeting_name, "error", "Транскрипт не найден", 70)
+                return
+            
+            transcript_text = transcript_file.read_text(encoding="utf-8")
+            if not transcript_text.strip():
+                save_progress(meeting_name, "error", "Транскрипт пустой", 70)
+                return
+            
+            # Суммаризация
+            save_progress(meeting_name, "processing", "Вызов KodaCode...", 75)
+            summary = summarize_with_kodacode(transcript_text, meeting_type)
+            
+            if not summary:
+                summary = {
+                    "title": "без_суммаризации",
+                    "summary": "Не удалось получить суммаризацию от KodaCode",
+                    "action_items": [],
+                    "decisions": [],
+                    "career_insights": []
+                }
+            
+            save_results(meeting_id, transcript_text, summary, meeting_type, meeting_dir=meeting_dir)
+            save_progress(meeting_name, "done", "Суммаризация завершена", 100)
+            clear_progress(meeting_name)
+            
+        except Exception as e:
+            save_progress(meeting_name, "error", f"Ошибка суммаризации: {str(e)}", 75)
+    
+    thread = threading.Thread(target=run_summary_only, daemon=True)
+    thread.start()
+    
+    return jsonify({"status": "processing", "meeting": meeting_name, "step": "summary_only"})
