@@ -1,7 +1,9 @@
-from flask import render_template
+from flask import render_template, jsonify
 from pathlib import Path
+import shutil
+from datetime import datetime, date as date_t
 from . import main_bp
-from ..helpers import get_recording_status, list_meetings, load_meeting_types, find_meeting_dir, format_duration
+from ..helpers import get_recording_status, list_meetings, load_meeting_types, find_meeting_dir, format_duration, TRANSCRIPTS_DIR, SUMMARIES_DIR
 
 
 @main_bp.route('/')
@@ -11,8 +13,34 @@ def index():
     meetings = list_meetings()
     meeting_types = load_meeting_types()
     
+    # Сортировка: новые сверху (по timestamp в имени)
+    meetings.sort(key=lambda m: m['timestamp'], reverse=True)
+    
+    # Группировка по дате
+    groups = {}
+    for m in meetings:
+        dt = datetime.fromisoformat(m['timestamp'].replace('_', 'T'))
+        date_key = dt.strftime('%Y-%m-%d')
+        if date_key not in groups:
+            groups[date_key] = {
+                'date': date_key,
+                'date_label': dt.strftime('%d.%m.%Y'),
+                'meetings': []
+            }
+        groups[date_key]['meetings'].append(m)
+    
+    # Сортировка групп: сегодняшняя/ближайшая сверху
+    today = date_t.today().isoformat()
+    sorted_dates = sorted(groups.keys(), reverse=True)
+    # Ставим сегодняшнюю группу первой
+    if today in sorted_dates:
+        sorted_dates.remove(today)
+        sorted_dates.insert(0, today)
+    
+    grouped = [groups[d] for d in sorted_dates]
+    
     return render_template('index.html',
-                          meetings=meetings,
+                          grouped_meetings=grouped,
                           meeting_types=meeting_types,
                           is_recording=status['recording'],
                           total_meetings=len(meetings),
@@ -101,3 +129,28 @@ def meeting_detail(meeting_name):
                           transcript_lines=transcript_lines,
                           summary=summary,
                           is_recording=get_recording_status()['recording'])
+
+
+@main_bp.route('/api/meeting/<meeting_name>', methods=['DELETE'])
+def delete_meeting(meeting_name):
+    """Удалить встречу (папку аудио + транскрипт + суммаризацию)"""
+    
+    # Ищем папку встречи
+    meeting_dir = find_meeting_dir(meeting_name)
+    if not meeting_dir:
+        return jsonify({'error': 'Встреча не найдена'}), 404
+    
+    # Удаляем папку аудио
+    shutil.rmtree(meeting_dir)
+    
+    # Удаляем транскрипт
+    transcript_dir = TRANSCRIPTS_DIR / meeting_name
+    if transcript_dir.exists():
+        shutil.rmtree(transcript_dir)
+    
+    # Удаляем суммаризацию
+    summary_dir = SUMMARIES_DIR / meeting_name
+    if summary_dir.exists():
+        shutil.rmtree(summary_dir)
+    
+    return jsonify({'status': 'ok', 'deleted': meeting_name}), 200

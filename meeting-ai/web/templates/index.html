@@ -66,9 +66,16 @@
                     </a>
                 </div>
                 <div class="divide-y divide-slate-100">
-                    {% if meetings %}
-                        {% for meeting in meetings %}
-                        <a href="/meeting/{{ meeting.name }}" class="group block px-5 py-4 hover:bg-slate-50 transition">
+                    {% if grouped_meetings %}
+                        {% for group in grouped_meetings %}
+                        <!-- Группа по дате -->
+                        <div class="bg-slate-50/50 px-5 py-2 border-b border-slate-100">
+                            <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                                {{ group.date_label }}
+                            </span>
+                        </div>
+                        {% for meeting in group.meetings %}
+                        <div class="group block px-5 py-4 hover:bg-slate-50 transition">
                             <div class="flex items-start gap-4">
                                 <div class="flex-shrink-0 mt-0.5">
                                     {% if meeting.processed %}
@@ -83,7 +90,9 @@
                                 </div>
                                 <div class="flex-1 min-w-0">
                                     <div class="flex items-center gap-2 mb-1">
-                                        <h3 class="font-semibold text-slate-800 group-hover:text-brand-600 transition truncate">{{ meeting.name }}</h3>
+                                        <a href="/meeting/{{ meeting.name }}" class="font-semibold text-slate-800 group-hover:text-brand-600 transition truncate">{{ meeting.name }}</a>
+                                    </div>
+                                    <div class="flex items-center gap-2 mb-2">
                                         <span class="flex-shrink-0 text-xs font-medium px-2 py-0.5 rounded-full bg-brand-50 text-brand-700 border border-brand-200">{{ meeting.type }}</span>
                                     </div>
                                     <div class="flex items-center gap-3 text-xs text-slate-500">
@@ -98,12 +107,13 @@
                                         <span class="font-mono">{{ meeting.duration }}</span>
                                     </div>
                                 </div>
-                                <!-- Кнопка удаления ошибочного прогресса -->
-                                <button id="delete-progress-{{ meeting.name }}" onclick="event.stopPropagation(); deleteProgress('{{ meeting.name }}')" class="hidden flex-shrink-0 text-slate-400 hover:text-red-600 transition" title="Удалить ошибочный процесс">
-                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                                <!-- Кнопка удаления -->
+                                <button onclick="event.preventDefault(); deleteMeeting('{{ meeting.name }}')" class="flex-shrink-0 text-slate-300 hover:text-red-500 transition p-1 rounded-lg hover:bg-red-50" title="Удалить встречу">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                                 </button>
                             </div>
-                        </a>
+                        </div>
+                        {% endfor %}
                         {% endfor %}
                     {% else %}
                         <div class="py-20 text-center">
@@ -121,6 +131,61 @@
 
 {% block scripts %}
 <script>
+// ==================== Удаление встречи ====================
+async function deleteMeeting(meetingName) {
+    if (!confirm(`Удалить встречу "${meetingName}"?\nЭто действие необратимо.`)) return;
+    
+    try {
+        const res = await fetch(`/api/meeting/${encodeURIComponent(meetingName)}`, {
+            method: 'DELETE'
+        });
+        
+        if (res.ok) {
+            showToast('✅ Встреча удалена');
+            // Удаляем карточку из DOM без перезагрузки
+            const cards = document.querySelectorAll('div[class*="group block px-5 py-4"]');
+            cards.forEach(card => {
+                const nameEl = card.querySelector('a');
+                if (nameEl && nameEl.textContent.includes(meetingName)) {
+                    card.remove();
+                }
+            });
+            // Обновляем счётчик
+            const totalEl = document.querySelector('.grid.grid-cols-2 div:first-child div:first-child');
+            if (totalEl) {
+                const count = parseInt(totalEl.textContent) - 1;
+                totalEl.textContent = count;
+            }
+        } else {
+            const err = await res.json().catch(() => ({ error: 'Ошибка сервера' }));
+            showToast('❌ ' + (err.error || 'Не удалось удалить'));
+        }
+    } catch (e) {
+        showToast('❌ Ошибка: ' + e.message);
+    }
+}
+
+// ==================== Удаление прогресса ====================
+async function deleteProgress(meetingName) {
+    if (!confirm(`Удалить файл прогресса для ${meetingName}?`)) return;
+    
+    try {
+        const res = await fetch(`/api/progress/${meetingName}`, {
+            method: 'DELETE'
+        });
+        
+        if (res.ok) {
+            showToast('✅ Файл прогресса удалён');
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            const err = await res.json().catch(() => ({ error: 'Ошибка сервера' }));
+            showToast('❌ ' + (err.error || 'Не удалось удалить'));
+        }
+    } catch (e) {
+        showToast('❌ Ошибка: ' + e.message);
+    }
+}
+
 // Проверка статуса обработки при загрузке страницы
 async function checkProcessingStatus() {
     try {
@@ -133,34 +198,7 @@ async function checkProcessingStatus() {
     }
 }
 
-// Проверка и отображение ошибочных процессов
-async function checkErrorProgress() {
-    try {
-        const res = await fetch('/api/progress');
-        const progresses = await res.json();
-        console.log('Progresses:', progresses);
-        
-        const errorProgresses = progresses.filter(p => p.status === 'error');
-        console.log('Error progresses:', errorProgresses);
-        
-        if (errorProgresses.length > 0) {
-            errorProgresses.forEach(p => {
-                // meeting_name может быть полным путём, берём только имя
-                const nameParts = p.meeting_name.split('/');
-                const meetingName = nameParts[nameParts.length - 1];
-                console.log('Looking for delete-progress-' + meetingName);
-                const deleteBtn = document.getElementById(`delete-progress-${meetingName}`);
-                if (deleteBtn) {
-                    console.log('Found button, showing it');
-                    deleteBtn.classList.remove('hidden');
-                }
-            });
-        }
-    } catch (e) {
-        console.error('Error checking progress:', e);
-    }
-}
-
+// ==================== Записи ====================
 async function startRecording() {
     const type = document.getElementById('meetingType').value;
     try {
@@ -194,30 +232,9 @@ async function stopRecording() {
     }
 }
 
-async function deleteProgress(meetingName) {
-    if (!confirm(`Удалить файл прогресса для ${meetingName}?`)) return;
-    
-    try {
-        const res = await fetch(`/api/progress/${meetingName}`, {
-            method: 'DELETE'
-        });
-        
-        if (res.ok) {
-            showToast('✅ Файл прогресса удалён');
-            setTimeout(() => location.reload(), 1000);
-        } else {
-            const err = await res.json().catch(() => ({ error: 'Ошибка сервера' }));
-            showToast('Ошибка: ' + (err.error || 'Не удалось удалить'));
-        }
-    } catch (e) {
-        showToast('Ошибка: ' + e.message);
-    }
-}
-
 // Запускаем после загрузки DOM
 document.addEventListener('DOMContentLoaded', function() {
     checkProcessingStatus();
-    checkErrorProgress();
 });
 
 // Обновляем прогресс каждые 5 секунд
