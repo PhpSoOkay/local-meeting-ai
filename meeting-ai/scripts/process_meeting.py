@@ -18,9 +18,13 @@ for var in ['http_proxy', 'https_proxy', 'all_proxy',
             'HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY']:
     os.environ.pop(var, None)
 
-from faster_whisper import WhisperModel
-
 BASE_DIR = Path.home() / "Yandex.Disk/carrier/meeting-ai"
+
+# Импортируем модуль логирования
+sys.path.insert(0, str(BASE_DIR / "web" / "routes"))
+from logs import log_action
+
+from faster_whisper import WhisperModel
 AUDIO_DIR = BASE_DIR / "audio"
 TRANSCRIPTS_DIR = BASE_DIR / "transcripts"
 SUMMARIES_DIR = BASE_DIR / "summaries"
@@ -94,6 +98,7 @@ def summarize_with_kodacode(transcript: str, meeting_type_key: str = "default") 
 
     # Обрезаем транскрипт если слишком длинный
     max_chars = 15000
+    chars_before = len(transcript)
     if len(transcript) > max_chars:
         transcript = transcript[:max_chars] + "\n\n[... транскрипт обрезан ...]"
 
@@ -112,13 +117,17 @@ def summarize_with_kodacode(transcript: str, meeting_type_key: str = "default") 
         )
 
         if result.returncode != 0:
-            print(f"❌ Ошибка KodaCode: {result.stderr[:200]}")
+            error_msg = f"Ошибка KodaCode: {result.stderr[:200]}"
+            print(f"❌ {error_msg}")
+            log_action("UNKNOWN", "summary", error_msg, level="error", details={"stderr": result.stderr[:500], "returncode": result.returncode})
             return {}
 
         response_text = result.stdout.strip()
 
         if not response_text:
-            print("❌ Пустой ответ от KodaCode")
+            error_msg = "Пустой ответ от KodaCode"
+            print(f"❌ {error_msg}")
+            log_action("UNKNOWN", "summary", error_msg, level="error")
             return {}
 
         try:
@@ -130,18 +139,26 @@ def summarize_with_kodacode(transcript: str, meeting_type_key: str = "default") 
                 json_str = response_text
 
             summary = json.loads(json_str)
+            print(f"✅ Суммаризация получена: {summary.get('title', 'без_названия')}")
+            log_action("UNKNOWN", "summary", f"Суммаризация получена: {summary.get('title', 'без_названия')}", level="success", details={"response_length": len(response_text)})
             return summary
 
         except json.JSONDecodeError as e:
-            print(f"⚠️ Не удалось распарсить JSON: {e}")
+            error_msg = f"Не удалось распарсить JSON: {e}"
+            print(f"⚠️ {error_msg}")
+            log_action("UNKNOWN", "summary", error_msg, level="error", details={"json_error": str(e), "response_preview": response_text[:500]})
             return {"title": "без_названия", "summary": response_text,
                     "action_items": [], "career_insights": []}
 
     except subprocess.TimeoutExpired:
-        print("❌ KodaCode не ответил за 120 секунд")
+        error_msg = "KodaCode не ответил за 120 секунд"
+        print(f"❌ {error_msg}")
+        log_action("UNKNOWN", "summary", error_msg, level="error", details={"timeout": 120})
         return {}
     except Exception as e:
-        print(f"❌ Ошибка: {e}")
+        error_msg = f"Ошибка: {e}"
+        print(f"❌ {error_msg}")
+        log_action("UNKNOWN", "summary", error_msg, level="error", details={"error": str(e)})
         return {}
 
 
@@ -280,17 +297,23 @@ def process_meeting(input_path: Path, meeting_type_key: str = "default"):
     clear_progress(meeting_name)
     save_progress(meeting_name, "processing", "Инициализация...", 0)
 
+    # Логирование
+    log_action(meeting_name, "all", f"Начало обработки: {input_path.name}, тип: {meeting_type_key}")
+
     try:
         if input_path.is_dir():
             # Папка с сегментами
             segments = sorted(input_path.glob("segment_*.wav"))
             if not segments:
-                print("❌ Нет сегментов для обработки")
-                save_progress(meeting_name, "error", "Нет сегментов для обработки", 0)
+                error_msg = "Нет сегментов для обработки"
+                print(f"❌ {error_msg}")
+                save_progress(meeting_name, "error", error_msg, 0)
+                log_action(meeting_name, "all", error_msg, level="error")
                 return
 
             print(f"Обрабатываю папку: {input_path.name} ({len(segments)} сегментов)")
             save_progress(meeting_name, "processing", f"Транскрипция: 0/{len(segments)}", 0)
+            log_action(meeting_name, "transcript", f"Найдено {len(segments)} сегментов")
 
             all_transcripts = []
             total_seg = len(segments)
@@ -298,11 +321,13 @@ def process_meeting(input_path: Path, meeting_type_key: str = "default"):
                 progress = ((i - 1) / total_seg) * 70  # 0-70% для транскрипции
                 save_progress(meeting_name, "processing", f"Транскрипция сегмента {i}/{total_seg}: {segment.name}", progress)
                 print(f"\n📼 Сегмент {i}/{total_seg}")
+                log_action(meeting_name, "transcript", f"Транскрипция сегмента {i}/{total_seg}: {segment.name}")
 
                 # Транскрипция
                 try:
                     whisper_segs = transcribe_audio(str(segment))
                     print(f"   Найдено {len(whisper_segs)} фраз")
+                    log_action(meeting_name, "transcript", f"Сегмент {segment.name}: {len(whisper_segs)} фраз", details={"count": len(whisper_segs)})
 
                     if whisper_segs:
                         transcript = format_transcript(whisper_segs)
@@ -312,16 +337,19 @@ def process_meeting(input_path: Path, meeting_type_key: str = "default"):
                     error_msg = f"Ошибка транскрипции сегмента {segment.name}: {str(e)}"
                     print(f"❌ {error_msg}")
                     save_progress(meeting_name, "error", error_msg, progress)
+                    log_action(meeting_name, "transcript", error_msg, level="error", details={"segment": segment.name, "error": str(e)})
                     return
 
         else:
             # Один файл
             print(f"Обрабатываю файл: {input_path.name}")
             save_progress(meeting_name, "processing", "Транскрипция одного файла", 0)
+            log_action(meeting_name, "transcript", f"Транскрипция одного файла: {input_path.name}")
 
             try:
                 whisper_segs = transcribe_audio(str(input_path))
                 print(f"   Найдено {len(whisper_segs)} фраз")
+                log_action(meeting_name, "transcript", f"Файл {input_path.name}: {len(whisper_segs)} фраз", details={"count": len(whisper_segs)})
 
                 if whisper_segs:
                     transcript = format_transcript(whisper_segs)
@@ -332,29 +360,37 @@ def process_meeting(input_path: Path, meeting_type_key: str = "default"):
                 error_msg = f"Ошибка транскрипции: {str(e)}"
                 print(f"❌ {error_msg}")
                 save_progress(meeting_name, "error", error_msg, 0)
+                log_action(meeting_name, "transcript", error_msg, level="error", details={"error": str(e)})
                 return
 
         if not all_transcripts:
-            print("❌ Не удалось транскрибировать")
-            save_progress(meeting_name, "error", "Не удалось транскрибировать аудио", 0)
+            error_msg = "Не удалось транскрибировать"
+            print(f"❌ {error_msg}")
+            save_progress(meeting_name, "error", error_msg, 0)
+            log_action(meeting_name, "transcript", error_msg, level="error")
             return
 
         full_transcript = "\n\n---\n\n".join(all_transcripts)
         print(f"\n📝 Полный транскрипт: {len(full_transcript)} символов")
         save_progress(meeting_name, "processing", "Транскрипция завершена", 70)
+        log_action(meeting_name, "transcript", f"Транскрипция завершена: {len(full_transcript)} символов", details={"chars": len(full_transcript)})
 
         # Суммаризация с учётом типа
         save_progress(meeting_name, "processing", "Суммаризация через KodaCode...", 75)
+        log_action(meeting_name, "summary", "Начало суммаризации через KodaCode", details={"type": meeting_type_key})
         try:
             summary = summarize_with_kodacode(full_transcript, meeting_type_key)
         except Exception as e:
             error_msg = f"Ошибка суммаризации: {str(e)}"
             print(f"❌ {error_msg}")
             save_progress(meeting_name, "error", error_msg, 75)
+            log_action(meeting_name, "summary", error_msg, level="error", details={"error": str(e)})
             return
 
         if not summary:
-            print("⚠️ KodaCode не вернул суммаризацию, сохраняю только транскрипт")
+            warning_msg = "KodaCode не вернул суммаризацию, сохраняю только транскрипт"
+            print(f"⚠️ {warning_msg}")
+            log_action(meeting_name, "summary", warning_msg, level="warning")
             summary = {
                 "title": "без_суммаризации",
                 "summary": "Не удалось получить суммаризацию от KodaCode",
@@ -362,11 +398,14 @@ def process_meeting(input_path: Path, meeting_type_key: str = "default"):
                 "decisions": [],
                 "career_insights": []
             }
+        else:
+            log_action(meeting_name, "summary", "Суммаризация успешно получена", details={"title": summary.get("title", "")})
 
         meeting_id = input_path.stem if input_path.is_file() else input_path.name
         save_results(meeting_id, full_transcript, summary, meeting_type_key, meeting_dir=input_path)
 
         save_progress(meeting_name, "done", "Готово", 100)
+        log_action(meeting_name, "all", "Обработка завершена успешно", level="success")
         print(f"✅ Обработка завершена: {meeting_name}")
 
         # Удаляем файл прогресса после успешного завершения
@@ -377,6 +416,7 @@ def process_meeting(input_path: Path, meeting_type_key: str = "default"):
         error_msg = f"Неизвестная ошибка: {str(e)}"
         print(f"❌ {error_msg}")
         save_progress(meeting_name, "error", error_msg, 0)
+        log_action(meeting_name, "all", error_msg, level="error", details={"error": str(e), "traceback": str(e)})
 
 if __name__ == "__main__":
     import argparse

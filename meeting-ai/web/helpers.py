@@ -177,6 +177,11 @@ def run_processing(meeting_name, meeting_type):
     env['http_proxy'] = ''
     env['https_proxy'] = ''
     env['all_proxy'] = ''
+    # Добавляем web/routes в PYTHONPATH для subprocess
+    if 'PYTHONPATH' in env:
+        env['PYTHONPATH'] = str(BASE_DIR / "web" / "routes") + ":" + env['PYTHONPATH']
+    else:
+        env['PYTHONPATH'] = str(BASE_DIR / "web" / "routes")
 
     cmd = [
         sys.executable, str(BASE_DIR / "scripts" / "process_meeting.py"),

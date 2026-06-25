@@ -135,6 +135,12 @@
                             Саммари
                         </span>
                     </button>
+                    <button onclick="switchTab('logs')" id="tab-logs" class="tab-btn flex-1 px-4 py-3 text-sm font-medium text-slate-500 hover:text-slate-700 transition">
+                        <span class="flex items-center justify-center gap-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                            Лог
+                        </span>
+                    </button>
                 </div>
 
                 <div class="p-5 min-h-[400px]">
@@ -346,6 +352,19 @@
                             </button>
                         </div>
                         {% endif %}
+                    </div>
+                    <!-- Logs tab -->
+                    <div id="content-logs" class="tab-content hidden">
+                        <div class="flex items-center justify-between mb-4">
+                            <h4 class="text-sm font-bold text-slate-800 uppercase tracking-wider">Лог обработки</h4>
+                            <button onclick="loadLogs()" class="text-sm text-brand-600 hover:text-brand-700 font-medium flex items-center gap-1">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                                Обновить
+                            </button>
+                        </div>
+                        <div id="logsContainer" class="bg-slate-900 text-slate-300 rounded-xl p-4 font-mono text-xs max-h-[500px] overflow-y-auto">
+                            <div class="text-center text-slate-500 py-8">Загрузка логов...</div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -582,7 +601,86 @@ async function deleteProgress() {
 
 // Проверяем статус при загрузке страницы
 checkProcessingStatus();
+loadLogs();
 // Обновляем состояние кнопки каждые 5 секунд
 setInterval(checkProcessingStatus, 5000);
+// Обновляем логи каждые 5 секунд
+setInterval(loadLogs, 5000);
+
+// ==================== Логи ====================
+async function loadLogs() {
+    const container = document.getElementById('logsContainer');
+    if (!container) return;
+    
+    try {
+        const res = await fetch(`/api/logs?meeting=${encodeURIComponent(meetingName)}&limit=200`);
+        const data = await res.json();
+        
+        if (!data.logs || data.logs.length === 0) {
+            container.innerHTML = '<div class="text-center text-slate-500 py-8">Нет записей в логе</div>';
+            return;
+        }
+        
+        // Сортируем по времени (новые сверху)
+        const sorted = data.logs.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+        
+        container.innerHTML = sorted.map(log => {
+            const time = new Date(log.timestamp).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            const date = new Date(log.timestamp).toLocaleDateString('ru-RU');
+            
+            // Цвета по уровням
+            let color = 'text-slate-300';
+            let bg = '';
+            if (log.level === 'error') { color = 'text-red-400'; bg = 'bg-red-900/20'; }
+            else if (log.level === 'warning') { color = 'text-amber-400'; bg = 'bg-amber-900/20'; }
+            else if (log.level === 'success') { color = 'text-emerald-400'; bg = 'bg-emerald-900/20'; }
+            else if (log.level === 'info') { color = 'text-blue-400'; }
+            
+            // Иконка
+            let icon = '•';
+            if (log.level === 'error') icon = '✗';
+            else if (log.level === 'warning') icon = '⚠';
+            else if (log.level === 'success') icon = '✓';
+            else if (log.level === 'info') icon = 'ℹ';
+            
+            // Степ
+            const stepBadge = log.step ? `<span class="text-slate-500">[${log.step}]</span>` : '';
+            
+            // Детали
+            let detailsHtml = '';
+            if (log.details && Object.keys(log.details).length > 0) {
+                detailsHtml = `<div class="text-slate-500 mt-1 text-[10px]">${escapeHtml(JSON.stringify(log.details).substring(0, 150))}</div>`;
+            }
+            
+            return `
+                <div class="mb-2 p-2 rounded ${bg}">
+                    <div class="flex items-start gap-2">
+                        <span class="${color} flex-shrink-0">${icon}</span>
+                        <div class="flex-1 min-w-0">
+                            <div class="flex items-center gap-2">
+                                <span class="text-slate-500 text-[10px]">${date} ${time}</span>
+                                ${stepBadge}
+                            </div>
+                            <div class="${color} mt-0.5 break-all">${escapeHtml(log.message)}</div>
+                            ${detailsHtml}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+        
+        // Прокрутка вниз
+        container.scrollTop = container.scrollHeight;
+        
+    } catch (e) {
+        container.innerHTML = `<div class="text-center text-red-400 py-8">Ошибка загрузки логов: ${escapeHtml(e.message)}</div>`;
+    }
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
 </script>
 {% endblock %}

@@ -2,9 +2,6 @@ import threading
 from flask import jsonify, request
 from . import processing_bp
 from ..helpers import get_recording_status, run_processing, find_meeting_dir, BASE_DIR, get_processing_status
-
-
-@processing_bp.route('/start', methods=['POST'])
 def api_start():
     """API: начать запись"""
     # Проверяем, не запущена ли обработка
@@ -152,6 +149,7 @@ def api_process_summary_only(meeting_name):
     import json
     import os
     import sys
+    from .logs import log_action
     
     # Проверяем, не идёт ли обработка другой встречи
     processing = get_processing_status()
@@ -167,6 +165,8 @@ def api_process_summary_only(meeting_name):
     meeting_type = "default"
     if type_file.exists():
         meeting_type = type_file.read_text().strip()
+    
+    log_action(meeting_name, "summary", "Запуск суммаризации (summary-only)", details={"type": meeting_type})
     
     def run_summary_only():
         sys.path.insert(0, str(BASE_DIR / "scripts"))
@@ -185,27 +185,37 @@ def api_process_summary_only(meeting_name):
                     metadata = json.loads(metadata_file.read_text(encoding="utf-8"))
                     if "transcript_dir" in metadata:
                         transcript_file = Path(metadata["transcript_dir"]) / "transcript.txt"
-                except Exception:
-                    pass
+                        log_action(meeting_name, "summary", f"Транскрипт найден: {transcript_file}", details={"path": str(transcript_file)})
+                except Exception as e:
+                    log_action(meeting_name, "summary", f"Ошибка чтения метаданных: {e}", level="warning")
             
             if not transcript_file or not transcript_file.exists():
                 # Fallback
                 transcript_file = BASE_DIR / "transcripts" / meeting_name / "transcript.txt"
+                log_action(meeting_name, "summary", f"Транскрипт не найден в метаданных, fallback: {transcript_file}")
             
             if not transcript_file.exists():
-                save_progress(meeting_name, "error", "Транскрипт не найден", 70)
+                error_msg = "Транскрипт не найден"
+                log_action(meeting_name, "summary", error_msg, level="error")
+                save_progress(meeting_name, "error", error_msg, 70)
                 return
             
             transcript_text = transcript_file.read_text(encoding="utf-8")
             if not transcript_text.strip():
-                save_progress(meeting_name, "error", "Транскрипт пустой", 70)
+                error_msg = "Транскрипт пустой"
+                log_action(meeting_name, "summary", error_msg, level="warning")
+                save_progress(meeting_name, "error", error_msg, 70)
                 return
+            
+            log_action(meeting_name, "summary", f"Транскрипт прочитан: {len(transcript_text)} символов", details={"chars": len(transcript_text)})
             
             # Суммаризация
             save_progress(meeting_name, "processing", "Вызов KodaCode...", 75)
             summary = summarize_with_kodacode(transcript_text, meeting_type)
             
             if not summary:
+                warning_msg = "KodaCode не вернул суммаризацию"
+                log_action(meeting_name, "summary", warning_msg, level="warning")
                 summary = {
                     "title": "без_суммаризации",
                     "summary": "Не удалось получить суммаризацию от KodaCode",
@@ -213,15 +223,59 @@ def api_process_summary_only(meeting_name):
                     "decisions": [],
                     "career_insights": []
                 }
+            else:
+                log_action(meeting_name, "summary", f"Суммаризация получена: {summary.get('title', '')}", level="success")
             
             save_results(meeting_id, transcript_text, summary, meeting_type, meeting_dir=meeting_dir)
             save_progress(meeting_name, "done", "Суммаризация завершена", 100)
+            log_action(meeting_name, "summary", "Суммаризация завершена успешно", level="success")
             clear_progress(meeting_name)
             
         except Exception as e:
-            save_progress(meeting_name, "error", f"Ошибка суммаризации: {str(e)}", 75)
+            error_msg = f"Ошибка суммаризации: {str(e)}"
+            log_action(meeting_name, "summary", error_msg, level="error", details={"error": str(e)})
+            save_progress(meeting_name, "error", error_msg, 75)
     
     thread = threading.Thread(target=run_summary_only, daemon=True)
     thread.start()
     
     return jsonify({"status": "processing", "meeting": meeting_name, "step": "summary_only"})
+
+
+# ==================== ЛОГИ ====================
+from .logs import get_logs as _get_logs, clear_logs as _clear_logs
+
+@processing_bp.route('/logs')
+def api_get_logs():
+    """API: получить логи обработки"""
+    meeting = request.args.get("meeting")
+    limit = request.args.get("limit", 100, type=int)
+    level = request.args.get("level")
+    
+    logs = _get_logs(meeting_name=meeting, limit=limit, level=level)
+    from ..helpers import BASE_DIR
+    return jsonify({
+        "logs": logs,
+        "count": len(logs),
+        "log_file": str(BASE_DIR / "logs" / "processing.log")
+    })
+
+
+@processing_bp.route('/logs/<meeting_name>', methods=['DELETE'])
+def api_clear_meeting_logs(meeting_name):
+    """API: очистить логи для конкретной встречи"""
+    try:
+        _clear_logs(meeting_name)
+        return jsonify({"status": "ok", "meeting": meeting_name})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@processing_bp.route('/logs', methods=['DELETE'])
+def api_clear_all_logs():
+    """API: очистить все логи"""
+    try:
+        _clear_logs()
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
