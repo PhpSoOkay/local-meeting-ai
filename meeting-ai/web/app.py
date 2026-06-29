@@ -14,11 +14,13 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from web.routes import main_bp as main_blueprint
 from web.routes import api_bp as api_blueprint
 from web.routes import processing_bp as processing_blueprint
+from web.routes import models_bp as models_blueprint
 
 # Импортируем модули с маршрутами, чтобы декораторы зарегистрировались
 from web.routes import main
 from web.routes import api
 from web.routes import processing
+from web.routes import models
 
 
 def create_app():
@@ -30,6 +32,7 @@ def create_app():
     app.register_blueprint(main_blueprint)
     app.register_blueprint(api_blueprint, url_prefix='/api')
     app.register_blueprint(processing_blueprint, url_prefix='/api')
+    app.register_blueprint(models_blueprint)
 
     return app
 

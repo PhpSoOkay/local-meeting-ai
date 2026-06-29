@@ -5,6 +5,7 @@ CLI-интерфейс Meeting Recorder.
 import argparse
 import sys
 import os
+import json
 import subprocess
 from pathlib import Path
 
@@ -184,6 +185,212 @@ def cmd_devices(args):
     """Команда devices"""
     show_devices()
 
+def cmd_models(args):
+    """Команда models — управление AI-моделями"""
+    from . import models_config
+
+    if args.subcommand == "list":
+        _cmd_models_list()
+    elif args.subcommand == "test":
+        _cmd_models_test(args.model_name)
+    elif args.subcommand == "open":
+        _cmd_models_open()
+
+
+def _cmd_models_list():
+    """Показать список настроенных моделей"""
+    from . import models_config
+
+    print(f"\n{BOLD}🤖 Настроенные AI-модели{RESET}\n")
+
+    try:
+        config = models_config.load_models()
+    except (FileNotFoundError, ValueError) as e:
+        print(f"{RED}❌ {e}{RESET}")
+        print(f"\n{DIM}Создайте models.json в {models_config.CONFIG_DIR}/{RESET}")
+        return
+
+    default_sum = config.get("default_summarization", "")
+    default_tr = config.get("default_transcription", "")
+
+    print(f"{CYAN}Суммаризация по умолчанию:{RESET} {BOLD}{default_sum}{RESET}")
+    print(f"{CYAN}Транскрипция по умолчанию:{RESET}  {BOLD}{default_tr}{RESET}")
+    print()
+
+    models = config.get("models", {})
+    if not models:
+        print(f"{DIM}Модели не настроены{RESET}")
+        return
+
+    for key, model in sorted(models.items()):
+        is_sum_default = " ★" if key == default_sum else ""
+        is_tr_default = " ★" if key == default_tr else ""
+
+        mtype = model.get("type", "?")
+        model_id = model.get("model_id", "?")
+        name = model.get("name", key)
+        base_url = model.get("base_url", "?")
+        api_env = model.get("api_key_env", "нет")
+
+        badges = []
+        if is_sum_default:
+            badges.append(f"{GREEN}СУММ{is_sum_default}{RESET}")
+        if is_tr_default:
+            badges.append(f"{CYAN}ТРАНС{is_tr_default}{RESET}")
+        badge_str = f" [{' | '.join(badges)}]" if badges else ""
+
+        status = _check_model_status(key, model)
+
+        print(f"  {BOLD}{key}{RESET}{badge_str}")
+        print(f"    {DIM}{name} — {model_id} ({mtype}){RESET}")
+        print(f"    {DIM}URL: {base_url}{RESET}")
+        print(f"    {DIM}Ключ: {api_env}{RESET}")
+        print(f"    {status}")
+        print()
+
+
+def _check_model_status(key: str, model: dict) -> str:
+    """Проверить доступность модели (без реального запроса)"""
+    import os
+    api_env = model.get("api_key_env")
+    if api_env and not os.environ.get(api_env):
+        return f"{RED}⚠️  API-ключ '{api_env}' не задан в .env{RESET}"
+    return f"{GREEN}✓ готов{RESET}"
+
+
+def _cmd_models_test(model_name: str):
+    """Протестировать доступность модели"""
+    from . import models_config, ai_client
+
+    print(f"\n{CYAN}🧪 Тестирую модель: {model_name}...{RESET}\n")
+
+    try:
+        model_def = models_config.get_model_config(model_name)
+    except ValueError as e:
+        print(f"{RED}❌ {e}{RESET}")
+        return
+
+    mtype = model_def.get("type", "")
+
+    if mtype in ("summarization", "both"):
+        print(f"{DIM}Отправляю тестовый chat completion...{RESET}")
+        try:
+            text = ai_client.chat_completion_text(
+                model_key=model_name,
+                system_prompt="Ответь ровно одним словом.",
+                user_prompt="Скажи 'работает' если ты работаешь.",
+                timeout=30,
+                json_mode=False,
+            )
+            print(f"{GREEN}✅ Ответ: {text}{RESET}")
+        except Exception as e:
+            print(f"{RED}❌ Ошибка: {e}{RESET}")
+
+    if mtype in ("transcription", "both"):
+        print(f"\n{DIM}Проверяю эндпоинт транскрипции (без отправки аудио)...{RESET}")
+        base_url = model_def.get("base_url", "").rstrip("/")
+        print(f"  URL: {base_url}/audio/transcriptions")
+        print(f"  Модель: {model_def.get('model_id', '?')}")
+        print(f"{DIM}  (полный тест транскрипции требует аудиофайл){RESET}")
+
+    print()
+
+
+def _cmd_models_open():
+    """Открыть конфиг в редакторе"""
+    from . import models_config
+    import subprocess
+
+    config_dir = models_config.CONFIG_DIR
+    config_dir.mkdir(parents=True, exist_ok=True)
+
+    # Создаём файлы если их нет
+    if not models_config.MODELS_FILE.exists():
+        _create_default_models_config()
+    if not models_config.ENV_FILE.exists():
+        _create_default_env_file()
+
+    # Открываем директорию конфигов
+    editor = os.environ.get("EDITOR", os.environ.get("VISUAL", "nano"))
+    print(f"\n{CYAN}📂 Директория конфигов:{RESET} {config_dir}")
+    print(f"{DIM}  models.json — настройки моделей{RESET}")
+    print(f"{DIM}  .env       — API-ключи (секреты){RESET}")
+    print(f"\n{DIM}Открываю редактор: {editor}{RESET}")
+    try:
+        subprocess.run([editor, str(models_config.MODELS_FILE)])
+    except Exception as e:
+        print(f"{RED}❌ Не удалось открыть редактор: {e}{RESET}")
+        print(f"   Откройте вручную: {models_config.MODELS_FILE}")
+
+
+def _create_default_models_config():
+    """Создать models.json по умолчанию с базовыми моделями."""
+    from . import models_config
+
+    default_config = {
+        "default_summarization": "routerai-gpt4o-mini",
+        "default_transcription": "local",
+        "models": {
+            "routerai-gpt4o-mini": {
+                "name": "GPT-4o Mini (RouterAI)",
+                "base_url": "https://routerai.ru/api/v1",
+                "api_key_env": "ROUTERAI_API_KEY",
+                "type": "summarization",
+                "model_id": "gpt-4o-mini",
+                "params": {"temperature": 0.3},
+            },
+            "routerai-gpt4o": {
+                "name": "GPT-4o (RouterAI)",
+                "base_url": "https://routerai.ru/api/v1",
+                "api_key_env": "ROUTERAI_API_KEY",
+                "type": "summarization",
+                "model_id": "gpt-4o",
+                "params": {"temperature": 0.3},
+            },
+            "routerai-mai-transcribe": {
+                "name": "MAI-Transcribe 1.5 (RouterAI)",
+                "base_url": "https://routerai.ru/api/v1",
+                "api_key_env": "ROUTERAI_API_KEY",
+                "type": "transcription",
+                "model_id": "microsoft/mai-transcribe-1.5",
+                "language": "ru",
+            },
+            "ollama-llama3": {
+                "name": "Llama 3.1 (локально)",
+                "base_url": "http://localhost:11434/v1",
+                "api_key_env": None,
+                "type": "summarization",
+                "model_id": "llama3.1",
+                "params": {"temperature": 0.3},
+            },
+        },
+    }
+
+    models_config.CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    models_config.MODELS_FILE.write_text(
+        json.dumps(default_config, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    print(f"{GREEN}✅ Создан models.json по умолчанию{RESET}")
+
+
+def _create_default_env_file():
+    """Создать .env.example."""
+    from . import models_config
+
+    env_content = (
+        "# API-ключи для AI-моделей Meeting AI\n"
+        "# Раскомментируйте и укажите свои ключи:\n\n"
+        "# ROUTERAI_API_KEY=sk-...\n"
+        "# OPENAI_API_KEY=sk-...\n"
+        "# OPENROUTER_API_KEY=sk-or-...\n"
+        "# ANTHROPIC_API_KEY=sk-ant-...\n"
+    )
+
+    models_config.ENV_FILE.write_text(env_content, encoding="utf-8")
+    print(f"{GREEN}✅ Создан .env шаблон{RESET}")
+
+
 def cmd_app(args):
     """Команда app — запуск веб-интерфейса"""
     import webbrowser
@@ -274,6 +481,14 @@ def main():
     p_config.add_argument("--show", action="store_true", help="Показать текущие")
 
     subparsers.add_parser("devices", help="Список устройств")
+    # models
+    p_models = subparsers.add_parser("models", help="Управление AI-моделями")
+    p_models_sub = p_models.add_subparsers(dest="subcommand")
+    p_models_sub.required = True
+    p_models_sub.add_parser("list", help="Список настроенных моделей")
+    p_models_test = p_models_sub.add_parser("test", help="Проверить доступность модели")
+    p_models_test.add_argument("model_name", help="Имя модели для теста")
+    p_models_sub.add_parser("open", help="Открыть конфиг в редакторе")
     # app
     p_app = subparsers.add_parser("app", help="Запустить веб-интерфейс")
     p_app.add_argument("--port", type=int, default=5000, help="Порт (по умолчанию 5000)")
@@ -289,6 +504,7 @@ def main():
         "process": cmd_process,
         "config": cmd_config,
         "devices": cmd_devices,
+        "models": cmd_models,
         "app": cmd_app,
     }
 

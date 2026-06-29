@@ -7,7 +7,7 @@
 - 🎙️ **Запись звука** — запись с микрофона и звука компьютера через PulseAudio
 - 📝 **Транскрибация** — преобразование речи в текст с помощью faster-whisper (medium)
 - 👥 **Диаризация** — автоматическое определение и разделение спикеров (Resemblyzer)
-- 📊 **Суммаризация** — создание структурированного резюме встречи через KodaCode CLI
+- 📊 **Суммаризация** — создание структурированного резюме через AI-модели (OpenAI-compatible API)
 - 🌐 **Веб-интерфейс** — просмотр списка встреч, транскриптов и суммари
 - 🔧 **CLI** — управление записью и обработкой из командной строки
 - 🖥️ **System Tray** — запуск сервера из иконки в системном трее (Ubuntu)
@@ -27,12 +27,12 @@ sudo pacman -S pulseaudio pulseaudio-alsa ffmpeg
 ### Python-пакеты
 
 ```bash
-pip install flask faster-whisper resemblyzer scikit-learn numpy
+pip install flask faster-whisper resemblyzer scikit-learn numpy httpx python-dotenv
 ```
 
 ### Дополнительные требования
 
-- **KodaCode CLI** (`koda`) — должен быть установлен и доступен в PATH
+- **API-ключ** для AI-провайдера (RouterAI, OpenAI, OpenRouter или локальный Ollama)
 - **Python 3.8+**
 
 ## Установка
@@ -56,9 +56,21 @@ source .venv/bin/activate  # Linux/macOS
 pip install flask faster-whisper resemblyzer scikit-learn numpy
 ```
 
-4. Проверьте доступность KodaCode CLI:
+4. Настройте AI-модели:
 ```bash
-koda --version
+# Создать конфиг моделей и .env
+meeting models open
+```
+
+5. Добавьте API-ключ в `~/.config/meeting-ai/.env`:
+```bash
+ROUTERAI_API_KEY=sk-...
+```
+
+6. (опционально) Проверьте модели:
+```bash
+meeting models list
+meeting models test routerai-gpt4o-mini
 ```
 
 ## Конфигурация
@@ -168,7 +180,10 @@ meeting-ai/
 
 2. **Сегментация**: Аудио разбивается на сегменты по тишине для удобства обработки.
 
-3. **Транскрибация**: Каждый сегмент обрабатывается моделью faster-whisper (medium, CPU, int8).
+3. **Транскрибация**: 
+   - По умолчанию — локальная модель faster-whisper (medium, CPU, int8)
+   - При выборе облачной модели — отправка сегментов через `/audio/transcriptions` API
+   - Выбор режима — `default_transcription` в `models.json` ("local" или имя модели)
 
 4. **Диаризация**: 
    - Извлекаются эмбеддинги спикеров через Resemblyzer
@@ -178,12 +193,46 @@ meeting-ai/
 5. **Суммаризация**:
    - Транскрипт обрезается до 15000 символов
    - Подставляется в промпт из `meeting_types.json`
-   - Отправляется в KodaCode CLI (таймаут 120 сек)
+   - Отправляется в AI-модель через OpenAI-compatible API (таймаут 120 сек)
+   - Модель выбирается через `default_summarization` в `models.json`
    - Результат парсится как JSON
 
 6. **Сохранение**:
    - Транскрипт → `transcripts/{subdir}/{id}/transcript.txt`
    - Суммари → `summaries/{subdir}/{id}/summary.json` + `summary.md`
+
+## Управление AI-моделями
+
+Выбор моделей для транскрипции и суммаризации осуществляется через конфигурационные файлы:
+
+- **`~/.config/meeting-ai/models.json`** — список моделей и настройки по умолчанию
+- **`~/.config/meeting-ai/.env`** — API-ключи (секреты)
+
+### Команды
+
+```bash
+meeting models list          # Показать настроенные модели
+meeting models test <name>   # Проверить доступность модели
+meeting models open          # Открыть конфиг в редакторе
+```
+
+### Переключение модели
+
+Отредактируйте `default_summarization` или `default_transcription` в `models.json`:
+
+```json
+{
+  "default_summarization": "openrouter-claude",
+  "default_transcription": "local",
+  ...
+}
+```
+
+### Добавление новой модели
+
+1. Добавьте запись в `models` в `models.json`
+2. Добавьте API-ключ в `.env` (если требуется)
+3. Проверьте: `meeting models list`
 
 ## API
 
@@ -265,9 +314,16 @@ python tray/install.py --no-autostart
 - Проверьте доступность файла аудио
 
 ### Ошибка суммаризации
-- Проверьте установку KodaCode CLI: `koda --version`
+- Проверьте настройки моделей: `meeting models list`
+- Убедитесь, что API-ключ задан в `.env`: `cat ~/.config/meeting-ai/.env`
+- Проверьте доступность модели: `meeting models test routerai-gpt4o-mini`
 - Убедитесь, что транскрипт не пустой
 - Проверьте логи на предмет таймаутов
+
+### Облачная транскрипция не работает
+- Проверьте интернет-соединение
+- При недоступности облака система автоматически переключится на локальную модель
+- Проверьте API-ключ и баланс провайдера
 
 ### PulseAudio ошибки
 - Перезапустите PulseAudio: `pulseaudio -k && pulseaudio --start`

@@ -2,6 +2,7 @@ import threading
 from flask import jsonify, request
 from . import processing_bp
 from ..helpers import get_recording_status, run_processing, find_meeting_dir, BASE_DIR, get_processing_status
+@processing_bp.route('/start', methods=['POST'])
 def api_start():
     """API: начать запись"""
     # Проверяем, не запущена ли обработка
@@ -170,7 +171,8 @@ def api_process_summary_only(meeting_name):
     
     def run_summary_only():
         sys.path.insert(0, str(BASE_DIR / "scripts"))
-        from process_meeting import summarize_with_kodacode, save_results
+        from process_meeting import summarize_with_ai, save_results
+        from recorder.models_config import get_default_summarization_model
         from progress import save_progress, clear_progress
         
         meeting_id = meeting_name
@@ -210,15 +212,16 @@ def api_process_summary_only(meeting_name):
             log_action(meeting_name, "summary", f"Транскрипт прочитан: {len(transcript_text)} символов", details={"chars": len(transcript_text)})
             
             # Суммаризация
-            save_progress(meeting_name, "processing", "Вызов KodaCode...", 75)
-            summary = summarize_with_kodacode(transcript_text, meeting_type)
+            model_key = get_default_summarization_model()
+            save_progress(meeting_name, "processing", f"Вызов {model_key}...", 75)
+            summary = summarize_with_ai(transcript_text, meeting_type)
             
             if not summary:
-                warning_msg = "KodaCode не вернул суммаризацию"
+                warning_msg = f"Модель {model_key} не вернула суммаризацию"
                 log_action(meeting_name, "summary", warning_msg, level="warning")
                 summary = {
                     "title": "без_суммаризации",
-                    "summary": "Не удалось получить суммаризацию от KodaCode",
+                    "summary": "Не удалось получить суммаризацию от AI-модели",
                     "action_items": [],
                     "decisions": [],
                     "career_insights": []

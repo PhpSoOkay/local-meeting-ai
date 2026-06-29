@@ -1,0 +1,62 @@
+{
+  "default_summarization": "deepseek/deepseek-v4-pro",
+  "default_transcription": "routerai-whisper-large-v3-turbo",
+  "models": {
+    "deepseek/deepseek-v4-pro": {
+      "name": "deepseek/deepseek-v4-pro",
+      "base_url": "https://routerai.ru/api/v1",
+      "api_key_env": "ROUTERAI_API_KEY",
+      "type": "summarization",
+      "model_id": "deepseek/deepseek-v4-pro",
+      "params": {
+        "temperature": 0.3
+      }
+    },
+    "routerai-gpt4o": {
+      "name": "GPT-4o (RouterAI)",
+      "base_url": "https://routerai.ru/api/v1",
+      "api_key_env": "ROUTERAI_API_KEY",
+      "type": "summarization",
+      "model_id": "gpt-4o",
+      "params": {
+        "temperature": 0.3
+      }
+    },
+    "routerai-claude-3-5-sonnet": {
+      "name": "Claude 3.5 Sonnet (RouterAI)",
+      "base_url": "https://routerai.ru/api/v1",
+      "api_key_env": "ROUTERAI_API_KEY",
+      "type": "summarization",
+      "model_id": "claude-3-5-sonnet",
+      "params": {
+        "temperature": 0.3
+      }
+    },
+    "routerai-qwen/qwen3-asr-flash-2026-02-10": {
+      "name": "qwen/qwen3-asr-flash-2026-02-10",
+      "base_url": "https://routerai.ru/api/v1",
+      "api_key_env": "ROUTERAI_API_KEY",
+      "type": "transcription",
+      "model_id": "qwen/qwen3-asr-flash-2026-02-10",
+      "language": "ru"
+    },
+    "routerai-whisper-large-v3-turbo": {
+      "name": "Whisper Large v3 Turbo (RouterAI)",
+      "base_url": "https://routerai.ru/api/v1",
+      "api_key_env": "ROUTERAI_API_KEY",
+      "type": "transcription",
+      "model_id": "openai/whisper-large-v3-turbo",
+      "language": "ru"
+    },
+    "ollama-llama3": {
+      "name": "Llama 3.1 (локально)",
+      "base_url": "http://localhost:11434/v1",
+      "api_key_env": null,
+      "type": "summarization",
+      "model_id": "llama3.1",
+      "params": {
+        "temperature": 0.3
+      }
+    }
+  }
+}
