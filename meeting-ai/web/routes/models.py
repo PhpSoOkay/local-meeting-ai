@@ -11,13 +11,10 @@ from flask import render_template, jsonify, request
 from .logs import log_action
 from . import models_bp
 
-# Определяем пути к конфигам
-CONFIG_DIR = Path.home() / ".config" / "meeting-ai"
+# Определяем пути к конфигам — только из проекта
 PROJECT_DIR = Path(__file__).parent.parent.parent  # meeting-ai/
-MODELS_FILE = CONFIG_DIR / "models.json"
-PROJECT_MODELS_FILE = PROJECT_DIR / "config" / "models.json"
-ENV_FILE = CONFIG_DIR / ".env"
-PROJECT_ENV_FILE = PROJECT_DIR / ".env"
+MODELS_FILE = PROJECT_DIR / "config" / "models.json"
+ENV_FILE = PROJECT_DIR / ".env"
 
 
 # ---------------------------------------------------------------------------
@@ -25,18 +22,14 @@ PROJECT_ENV_FILE = PROJECT_DIR / ".env"
 # ---------------------------------------------------------------------------
 
 def _find_models_file() -> Path:
-    """Найти models.json — приоритет: ~/.config, потом проект."""
-    if MODELS_FILE.exists():
-        return MODELS_FILE
-    return PROJECT_MODELS_FILE
+    """Найти models.json — в проекте."""
+    return MODELS_FILE
 
 
 def _find_env_file() -> Path:
-    """Найти .env файл."""
+    """Найти .env файл — в проекте."""
     if ENV_FILE.exists():
         return ENV_FILE
-    if PROJECT_ENV_FILE.exists():
-        return PROJECT_ENV_FILE
     return None
 
 
@@ -52,13 +45,9 @@ def _read_models() -> dict:
 
 
 def _write_models(config: dict):
-    """Записать models.json. Если ~/.config/meeting-ai/ существует — туда, иначе в проект."""
-    if CONFIG_DIR.exists() or MODELS_FILE.exists():
-        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-        MODELS_FILE.write_text(json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8")
-    else:
-        PROJECT_MODELS_FILE.parent.mkdir(parents=True, exist_ok=True)
-        PROJECT_MODELS_FILE.write_text(json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8")
+    """Записать models.json в проект."""
+    MODELS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    MODELS_FILE.write_text(json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def _read_env() -> dict:
@@ -81,13 +70,8 @@ def _read_env() -> dict:
 
 
 def _write_env(env_dict: dict):
-    """Записать .env файл."""
-    if CONFIG_DIR.exists() or ENV_FILE.exists():
-        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-        env_path = ENV_FILE
-    else:
-        env_path = PROJECT_ENV_FILE
-        env_path.parent.mkdir(parents=True, exist_ok=True)
+    """Записать .env файл в проект."""
+    env_path = ENV_FILE
 
     # Читаем существующий .env, обновляем нужные ключи
     existing = _read_env()

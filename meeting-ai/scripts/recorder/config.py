@@ -7,9 +7,9 @@ from pathlib import Path
 from datetime import datetime
 
 BASE_DIR = Path.home() / "Yandex.Disk/carrier/meeting-ai"
-CONFIG_DIR = Path.home() / ".config" / "meeting-ai"
-CONFIG_FILE = CONFIG_DIR / "config.json"
-MEETING_TYPES_FILE = BASE_DIR / "config" / "meeting_types.json"
+PROJECT_DIR = BASE_DIR  # meeting-ai/ (совпадает с BASE_DIR)
+CONFIG_FILE = PROJECT_DIR / "config" / "config.json"
+MEETING_TYPES_FILE = PROJECT_DIR / "config" / "meeting_types.json"
 
 
 def load_config() -> dict:
@@ -24,7 +24,7 @@ def load_config() -> dict:
 
 def save_config(config: dict):
     """Сохранить конфигурацию"""
-    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
     CONFIG_FILE.write_text(
         json.dumps(config, ensure_ascii=False, indent=2),
         encoding="utf-8"

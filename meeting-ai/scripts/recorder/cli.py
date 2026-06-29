@@ -207,7 +207,7 @@ def _cmd_models_list():
         config = models_config.load_models()
     except (FileNotFoundError, ValueError) as e:
         print(f"{RED}❌ {e}{RESET}")
-        print(f"\n{DIM}Создайте models.json в {models_config.CONFIG_DIR}/{RESET}")
+        print(f"\n{DIM}Создайте models.json в {models_config.MODELS_FILE.parent}/{RESET}")
         return
 
     default_sum = config.get("default_summarization", "")
@@ -301,7 +301,7 @@ def _cmd_models_open():
     from . import models_config
     import subprocess
 
-    config_dir = models_config.CONFIG_DIR
+    config_dir = models_config.MODELS_FILE.parent
     config_dir.mkdir(parents=True, exist_ok=True)
 
     # Создаём файлы если их нет
@@ -366,7 +366,7 @@ def _create_default_models_config():
         },
     }
 
-    models_config.CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    models_config.MODELS_FILE.parent.mkdir(parents=True, exist_ok=True)
     models_config.MODELS_FILE.write_text(
         json.dumps(default_config, ensure_ascii=False, indent=2),
         encoding="utf-8",
