@@ -271,7 +271,7 @@ def ensure_config_exists() -> list:
     models_file = _find_models_file()
     if models_file is None:
         issues.append(
-            f"models.json не найден. Создайте {MODELS_FILE} или {PROJECT_MODELS_FILE}\n"
+            f"models.json не найден. Создайте {MODELS_FILE}\n"
             f"  Запустите: meeting models open"
         )
         return issues
